@@ -14,18 +14,22 @@
         </select>
       </div>
       <div class="grow"></div>
+      {% if deload_now %}
+        <span class="pill">Deload week</span>
+      {% endif %}
       <a class="btn" href="{{ url_for('view_program_week', program_id=program.id, week=selected_week) }}">View Week {{ selected_week }}</a>
     </div>
 
-    {% for pe, rep_target, next_weight, default_weight, last_session_sets in per_ex %}
+    {% for pe, rep_target, next_weight, default_weight, last_session_sets, sets_this_session in per_ex %}
       <fieldset class="block">
         <legend>
-          {{ pe.exercise.name }} — {{ pe.target_sets }} sets
+          {{ pe.exercise.name }} — {{ sets_this_session }} sets
           <span class="muted">(range {{ pe.rep_min }}–{{ pe.rep_max }}, target: {{ rep_target }} reps, RIR {{ pe.rir }})</span>
-          {% if next_weight %}<span class="pill">suggested next: {{ next_weight }}</span>{% endif %}
+          {% if next_weight %}<span class="pill">suggest next: {{ next_weight }}</span>{% endif %}
+          {% if sets_this_session != pe.target_sets %}<span class="pill">deload volume</span>{% endif %}
         </legend>
 
-        {% for s_no in range(1, pe.target_sets+1) %}
+        {% for s_no in range(1, sets_this_session+1) %}
           <div class="row gap">
             <span class="muted w80">Set {{ s_no }}</span>
             <label>Reps
@@ -42,7 +46,7 @@
             {% set best = (last_session_sets | max(attribute='reps')).reps %}
             {% set topw = (last_session_sets | max(attribute='weight')).weight %}
             Last session: best reps {{ best }}, top weight {{ topw }}.
-            {% if best >= pe.rep_max %}<strong class="good">Hit cap last time → increase weight this session.</strong>{% endif %}
+            {% if best >= pe.rep_max %}<strong class="good">Hit cap last time → increase weight.</strong>{% endif %}
           </div>
         {% endif %}
       </fieldset>
