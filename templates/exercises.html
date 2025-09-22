@@ -7,28 +7,53 @@
   <form method="post" class="grid2">
     <div>
       <label>Name</label>
-      <input name="name" placeholder="Incline Smith Press">
+      <input name="name" placeholder="e.g., Smith Bench Press" required>
     </div>
     <div>
-      <label>Muscle group</label>
+      <label>Muscle</label>
       <select name="muscle_group">
-        {% for g in groups %}
-          <option value="{{ g }}">{{ g }}</option>
+        {% for m in muscles %}
+          <option value="{{ m }}">{{ m }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="col-span-2">
       <button class="btn-primary" type="submit">Add</button>
+      <a class="btn" href="{{ url_for('muscles') }}">Manage muscles</a>
     </div>
   </form>
 </div>
 
 <div class="card">
   <h3>All Exercises</h3>
-  <ul class="bullets">
-    {% for ex in exercises %}
-      <li>{{ ex.muscle_group }} — {{ ex.name }}</li>
-    {% endfor %}
-  </ul>
+  {% if exercises %}
+  <table class="table">
+    <thead><tr><th>Name</th><th>Muscle</th><th style="width:220px">Actions</th></tr></thead>
+    <tbody>
+      {% for ex in exercises %}
+      <tr>
+        <form method="post" action="{{ url_for('update_exercise', ex_id=ex.id) }}">
+          <td><input name="name" value="{{ ex.name }}" required></td>
+          <td>
+            <select name="muscle_group">
+              {% for m in muscles %}
+                <option value="{{ m }}" {% if ex.muscle_group==m %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="row gap">
+            <button class="btn" type="submit">Save</button>
+        </form>
+            <form method="post" action="{{ url_for('delete_exercise', ex_id=ex.id) }}" onsubmit="return confirm('Delete {{ ex.name }}?');">
+              <button class="btn danger" type="submit">Delete</button>
+            </form>
+          </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No exercises yet.</p>
+  {% endif %}
 </div>
 {% endblock %}

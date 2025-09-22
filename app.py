@@ -22,10 +22,14 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 # -------------------- MODELS --------------------
+class MuscleGroup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(32), unique=True, nullable=False)  # e.g., 'chest', 'calves'
+
 class Exercise(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), unique=True, nullable=False)
-    muscle_group = db.Column(db.String(32), nullable=False)
+    muscle_group = db.Column(db.String(32), nullable=False)  # keep as string for now
 
 class Program(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -34,16 +38,16 @@ class Program(db.Model):
     target_rir = db.Column(db.Integer, nullable=False)
     duration_weeks = db.Column(db.Integer, nullable=False)
     deload = db.Column(db.Boolean, default=False)
-    deload_week = db.Column(db.Integer, nullable=True)   # NEW: optional scheduled deload week
+    deload_week = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.Date, default=date.today)
     status = db.Column(db.String(16), default="active")  # active | archived
-    locked = db.Column(db.Boolean, default=False)        # lock exercise selection when started
+    locked = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class ProgramDay(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     program_id = db.Column(db.Integer, db.ForeignKey("program.id"), nullable=False)
-    day_index = db.Column(db.Integer, nullable=False)  # 0..N-1
+    day_index = db.Column(db.Integer, nullable=False)
     day_name = db.Column(db.String(32), nullable=False)
 
 class ProgramExercise(db.Model):
@@ -55,7 +59,7 @@ class ProgramExercise(db.Model):
     rep_min = db.Column(db.Integer, nullable=False)
     rep_max = db.Column(db.Integer, nullable=False)
     rir = db.Column(db.Integer, nullable=False)
-    position = db.Column(db.Integer, default=0)   # NEW: ordering within the day
+    position = db.Column(db.Integer, default=0)
     exercise = db.relationship("Exercise")
 
 class Workout(db.Model):
@@ -76,21 +80,34 @@ class SetLog(db.Model):
     progressed = db.Column(db.Boolean, default=None)
     exercise = db.relationship("Exercise")
 
-# -------------------- CONSTANTS & HELPERS --------------------
+# -------------------- HELPERS --------------------
 SPLITS = {
     "PPL": ["Push A", "Pull A", "Legs A", "Push B", "Pull B", "Legs B"],
     "UL":  ["Upper A", "Lower A", "Upper B", "Lower B"],
     "FB":  ["Full 1", "Full 2", "Full 3", "Full 4", "Full 5", "Full 6"],
 }
-MUSCLE_GROUPS = ["chest", "back", "legs", "shoulders", "biceps", "triceps"]
-
 INCREMENT_LBS = {
-    "legs": 5.0, "chest": 2.5, "back": 2.5, "shoulders": 2.5, "biceps": 2.5, "triceps": 2.5,
+    "legs": 5.0, "chest": 2.5, "back": 2.5, "shoulders": 2.5,
+    "biceps": 2.5, "triceps": 2.5, "calves": 5.0, "forearms": 2.5
 }
+
+def get_muscle_names():
+    names = [m.name for m in MuscleGroup.query.order_by(MuscleGroup.name).all()]
+    if not names:  # safety
+        names = ["chest","back","legs","shoulders","biceps","triceps","calves","forearms"]
+    return names
 
 def days_for_split(split: str, days_per_week: int):
     base = SPLITS.get(split, SPLITS["FB"])
     return base[:days_per_week]
+
+def seed_muscles():
+    defaults = ["chest","back","legs","shoulders","biceps","triceps","calves","forearms"]
+    existing = {m.name for m in MuscleGroup.query.all()}
+    for n in defaults:
+        if n not in existing:
+            db.session.add(MuscleGroup(name=n))
+    db.session.commit()
 
 def seed_exercises():
     if Exercise.query.count() > 0:
@@ -100,7 +117,8 @@ def seed_exercises():
         ("Overhead Press","shoulders"), ("Lateral Raise","shoulders"),
         ("Pulldown","back"), ("Chest-Supported Row","back"),
         ("Back Squat","legs"), ("Romanian Deadlift","legs"),
-        ("Leg Press","legs"), ("Bicep Curl","biceps"), ("Triceps Pushdown","triceps")
+        ("Leg Press","legs"), ("Bicep Curl","biceps"),
+        ("Triceps Pushdown","triceps"), ("Standing Calf Raise","calves")
     ]
     for n,g in catalog: db.session.add(Exercise(name=n, muscle_group=g))
     db.session.commit()
@@ -115,7 +133,6 @@ def get_current_week(program: Program) -> int:
     days = (date.today() - program.start_date).days
     return max(1, min((days // 7) + 1, program.duration_weeks))
 
-# ---------- last-session utilities & progression ----------
 def get_last_session_sets(exercise_id: int):
     from sqlalchemy import desc
     last = (
@@ -137,21 +154,11 @@ def is_deload_week(program: Program, week_num: int) -> bool:
     return program.deload_week is not None and week_num == program.deload_week
 
 def compute_session_targets(rep_min: int, rep_max: int, exercise: Exercise, deload: bool):
-    """
-    Progressive overload:
-      - If last best reps >= rep_max OR last best reps > rep_max (overshoot), suggest weight increase next time and reset target to rep_min.
-      - Else, target = min(best + 1, rep_max).
-      - If no history: target = rep_min.
-      - Deload week: we still compute target reps, but we'll reduce sets elsewhere.
-    Returns (target_reps_this_session, suggested_next_weight_or_None, last_top_weight_or_None)
-    """
     last_sets = get_last_session_sets(exercise.id)
     if not last_sets:
         return rep_min, None, None
-
     best_reps = max(s.reps for s in last_sets)
     last_top_weight = max(s.weight for s in last_sets)
-
     if best_reps >= rep_max:
         inc = INCREMENT_LBS.get(exercise.muscle_group, 2.5)
         return rep_min, round(last_top_weight + inc, 1), last_top_weight
@@ -159,7 +166,6 @@ def compute_session_targets(rep_min: int, rep_max: int, exercise: Exercise, delo
         return min(best_reps + 1, rep_max), None, last_top_weight
 
 def mark_progress(rep_target: int, reps: int, weight: float, last_top_weight: float | None):
-    # count as progress if hitting/above target OR any weight increase vs last top
     if last_top_weight is not None and weight > last_top_weight:
         return True
     return reps >= rep_target
@@ -200,13 +206,62 @@ def archive_program(program_id):
     flash("Program archived.")
     return redirect(url_for("programs_history"))
 
-# ------------- Exercise bank -------------
+# ---------- MUSCLE BANK ----------
+@app.route("/muscles", methods=["GET", "POST"])
+def muscles():
+    if request.method == "POST":
+        action = request.form.get("action", "add")
+        if action == "add":
+            name = request.form.get("name", "").strip().lower()
+            if not name:
+                flash("Enter a name.")
+            elif MuscleGroup.query.filter_by(name=name).first():
+                flash("Muscle already exists.")
+            else:
+                db.session.add(MuscleGroup(name=name))
+                db.session.commit()
+                flash("Muscle added.")
+        return redirect(url_for("muscles"))
+    items = MuscleGroup.query.order_by(MuscleGroup.name).all()
+    return render_template("muscles.html", muscles=items)
+
+@app.route("/muscles/<int:mid>/update", methods=["POST"])
+def update_muscle(mid):
+    m = MuscleGroup.query.get_or_404(mid)
+    new = request.form.get("name", "").strip().lower()
+    if not new:
+        flash("Enter a name.")
+    elif MuscleGroup.query.filter(MuscleGroup.id != mid, MuscleGroup.name == new).first():
+        flash("Another muscle with that name exists.")
+    else:
+        # If any exercises use the old name, update their string to the new name
+        Exercise.query.filter_by(muscle_group=m.name).update({"muscle_group": new})
+        m.name = new
+        db.session.commit()
+        flash("Muscle updated (and exercises retagged).")
+    return redirect(url_for("muscles"))
+
+@app.route("/muscles/<int:mid>/delete", methods=["POST"])
+def delete_muscle(mid):
+    m = MuscleGroup.query.get_or_404(mid)
+    in_use = Exercise.query.filter_by(muscle_group=m.name).count()
+    if in_use > 0:
+        flash(f"Cannot delete '{m.name}' — {in_use} exercise(s) use it.")
+        return redirect(url_for("muscles"))
+    db.session.delete(m)
+    db.session.commit()
+    flash("Muscle deleted.")
+    return redirect(url_for("muscles"))
+
+# ---------- EXERCISE BANK ----------
 @app.route("/exercises", methods=["GET","POST"])
 def exercises_bank():
+    muscles = get_muscle_names()
     if request.method == "POST":
+        # Add a new exercise
         name = request.form.get("name","").strip()
         muscle_group = request.form.get("muscle_group","").strip().lower()
-        if not name or muscle_group not in MUSCLE_GROUPS:
+        if not name or muscle_group not in muscles:
             flash("Provide a name and a valid muscle group.")
         else:
             if not Exercise.query.filter_by(name=name).first():
@@ -217,9 +272,43 @@ def exercises_bank():
                 flash("Exercise already exists.")
         return redirect(url_for("exercises_bank"))
     exercises = Exercise.query.order_by(Exercise.muscle_group, Exercise.name).all()
-    return render_template("exercises.html", exercises=exercises, groups=MUSCLE_GROUPS)
+    return render_template("exercises.html", exercises=exercises, muscles=muscles)
 
-# ------------- Program create / edit / lock -------------
+@app.route("/exercises/<int:ex_id>/update", methods=["POST"])
+def update_exercise(ex_id):
+    ex = Exercise.query.get_or_404(ex_id)
+    new_name = request.form.get("name","").strip()
+    new_group = request.form.get("muscle_group","").strip().lower()
+    if not new_name:
+        flash("Name required.")
+        return redirect(url_for("exercises_bank"))
+    if new_group not in get_muscle_names():
+        flash("Invalid muscle group.")
+        return redirect(url_for("exercises_bank"))
+    # enforce unique name
+    exists = Exercise.query.filter(Exercise.id != ex_id, Exercise.name == new_name).first()
+    if exists:
+        flash("Another exercise already has that name.")
+        return redirect(url_for("exercises_bank"))
+    ex.name = new_name
+    ex.muscle_group = new_group
+    db.session.commit()
+    flash("Exercise updated.")
+    return redirect(url_for("exercises_bank"))
+
+@app.route("/exercises/<int:ex_id>/delete", methods=["POST"])
+def delete_exercise(ex_id):
+    ex = Exercise.query.get_or_404(ex_id)
+    in_use = ProgramExercise.query.filter_by(exercise_id=ex.id).count()
+    if in_use > 0:
+        flash(f"Cannot delete '{ex.name}' — it’s used in {in_use} program day(s). Remove it from those days first.")
+        return redirect(url_for("exercises_bank"))
+    db.session.delete(ex)
+    db.session.commit()
+    flash("Exercise deleted.")
+    return redirect(url_for("exercises_bank"))
+
+# ---------- Program create / edit / lock ----------
 @app.route("/create-program", methods=["GET","POST"])
 def create_program():
     if request.method == "POST":
@@ -254,12 +343,9 @@ def edit_program_day(program_id, day_id):
     if day.program_id != prog.id:
         flash("Day does not belong to this program.")
         return redirect(url_for("current_program"))
-
-    # You can always adjust sets; adding/removing exercises allowed only before lock.
     allow_edit_exercises = not prog.locked
 
     if request.method == "POST":
-        # Two forms share this endpoint:
         action = request.form.get("action", "add")
         if action == "add" and allow_edit_exercises:
             ex_id = int(request.form.get("exercise_id","0"))
@@ -278,7 +364,6 @@ def edit_program_day(program_id, day_id):
             else:
                 flash("Provide valid sets/rep range.")
         elif action == "update_sets":
-            # Update target_sets even when locked
             pe_id = int(request.form.get("pe_id"))
             new_sets = int(request.form.get("new_sets", "0"))
             pe = ProgramExercise.query.get_or_404(pe_id)
@@ -328,14 +413,13 @@ def start_program(program_id):
     flash("Program started. Exercises locked. (You can still change sets.)")
     return redirect(url_for("current_program"))
 
-# ---- NEW: drag-sort endpoint (AJAX) ----
 @app.route("/program/day/<int:day_id>/sort", methods=["POST"])
 def sort_program_day(day_id):
     day = ProgramDay.query.get_or_404(day_id)
     prog = Program.query.get_or_404(day.program_id)
     if prog.locked:
         return jsonify({"ok": False, "msg": "Program locked"}), 400
-    order = request.json.get("order", [])  # list of pe_id in new order
+    order = request.json.get("order", [])
     for idx, pe_id in enumerate(order):
         pe = ProgramExercise.query.get(int(pe_id))
         if pe and pe.day_id == day.id:
@@ -343,7 +427,6 @@ def sort_program_day(day_id):
     db.session.commit()
     return jsonify({"ok": True})
 
-# ---- NEW: add/remove day (pre-lock) ----
 @app.route("/program/<int:program_id>/add-day", methods=["POST"])
 def add_day(program_id):
     prog = Program.query.get_or_404(program_id)
@@ -366,34 +449,13 @@ def remove_day(day_id):
     if prog.locked:
         flash("Program is locked. Cannot remove days.")
         return redirect(url_for("current_program"))
-    # delete its exercises, then the day
     ProgramExercise.query.filter_by(day_id=day.id).delete()
     db.session.delete(day)
-    # reindex remaining days
     days = ProgramDay.query.filter_by(program_id=prog.id).order_by(ProgramDay.day_index).all()
     for i, d in enumerate(days): d.day_index = i
     prog.days_per_week = len(days)
     db.session.commit()
     flash("Day removed.")
-    return redirect(url_for("current_program"))
-
-# ---- NEW: schedule/cancel deload ----
-@app.route("/program/<int:program_id>/set-deload", methods=["POST"])
-def set_deload(program_id):
-    prog = Program.query.get_or_404(program_id)
-    wk = request.form.get("deload_week")
-    if wk == "none" or wk is None or wk == "":
-        prog.deload_week = None
-        db.session.commit()
-        flash("Deload cleared.")
-    else:
-        w = int(wk)
-        if w < 1 or w > prog.duration_weeks:
-            flash("Invalid deload week.")
-        else:
-            prog.deload_week = w
-            db.session.commit()
-            flash(f"Deload scheduled for week {w}.")
     return redirect(url_for("current_program"))
 
 # ------------- Logging -------------
@@ -419,8 +481,6 @@ def log_program_day(day_id):
             rep_target, next_weight_suggestion, last_top_weight = compute_session_targets(
                 pe.rep_min, pe.rep_max, pe.exercise, deload_now
             )
-
-            # sets allowed to change dynamically; apply deload cut to sets
             sets_this_session = pe.target_sets
             if deload_now:
                 sets_this_session = max(1, ceil(pe.target_sets * 0.6))
@@ -430,27 +490,16 @@ def log_program_day(day_id):
                 weight_field = f"weight-{pe.id}-{set_no}"
                 reps_val = int(request.form.get(reps_field, "0") or "0")
                 weight_val = float(request.form.get(weight_field, "0") or "0")
-
                 if reps_val > 0 and weight_val > 0:
-                    # Accept outside-range reps; progression adapts:
-                    # - If reps >= rep_max: treat as cap hit -> weight increase next time
-                    # - Else target increments by +1 up to rep_max
                     progressed = mark_progress(rep_target, reps_val, weight_val, last_top_weight)
-                    if not progressed:
-                        non_progress_count += 1
                     db.session.add(SetLog(
                         workout_id=w.id, exercise_id=pe.exercise_id, set_number=set_no,
                         reps=reps_val, weight=weight_val, target_reps=rep_target, progressed=progressed
                     ))
-
         db.session.commit()
-        if non_progress_count > 0:
-            flash(f"Logged. {non_progress_count} set(s) didn’t meet target/add weight — focus next time.")
-        else:
-            flash("Logged. Targets met or baseline established.")
+        flash("Workout saved.")
         return redirect(url_for("current_program"))
 
-    # GET view data
     per_ex = []
     for pe in pes:
         rep_target, next_weight, last_top_weight = compute_session_targets(pe.rep_min, pe.rep_max, pe.exercise, deload_now)
@@ -470,7 +519,6 @@ def view_program_week(program_id, week):
     prog = Program.query.get_or_404(program_id)
     if week < 1 or week > prog.duration_weeks:
         flash("Invalid week."); return redirect(url_for("current_program"))
-
     days = ProgramDay.query.filter_by(program_id=prog.id).order_by(ProgramDay.day_index).all()
     summary = []
     for d in days:
@@ -504,9 +552,8 @@ def log_workout_quick():
     exercises = Exercise.query.order_by(Exercise.muscle_group, Exercise.name).all()
     return render_template("log_workout.html", exercises=exercises)
 
-# ------------- STARTUP / MIGRATIONS (lightweight) -------------
+# ------------- STARTUP patch (adds new columns, seeds) -------------
 def _ensure_columns():
-    """One-time, safe 'ALTER TABLE' additions for Postgres/SQLite."""
     from sqlalchemy import inspect, text
     insp = inspect(db.engine)
     # program_exercise.position
@@ -517,16 +564,21 @@ def _ensure_columns():
     # program.deload_week
     cols_p = [c["name"] for c in insp.get_columns("program")]
     if "deload_week" not in cols_p:
-        # Postgres
         try:
             db.session.execute(text("ALTER TABLE program ADD COLUMN deload_week INTEGER"))
         except Exception:
             pass
         db.session.commit()
+    # muscle_group table
+    try:
+        db.session.execute(text("SELECT 1 FROM muscle_group LIMIT 1"))
+    except Exception:
+        db.create_all()
 
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         _ensure_columns()
+        seed_muscles()
         seed_exercises()
     app.run(host="0.0.0.0", port=5000, debug=True)

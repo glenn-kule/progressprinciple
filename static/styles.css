@@ -74,3 +74,20 @@
   }
   
   .sortable-ghost{ opacity: .6; background:#eef2ff; }
+
+  /* make sure content never clips at the bottom */
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+main.container { flex: 1 0 auto; padding-bottom: 120px; } /* extra bottom room */
+footer.footer { flex: 0 0 auto; }
+
+/* tables & inputs */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.table input { width: 100%; }
+
+.sortable-ghost { opacity: .6; background:#eef2ff; }
+
+/* keep cards spaced so last one isn't clipped */
+.day-list .card:last-child { margin-bottom: 80px; }
+

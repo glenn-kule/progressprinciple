@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Muscle Bank</h2>
+
+<div class="card">
+  <h3>Add Muscle</h3>
+  <form method="post" class="row gap">
+    <input type="hidden" name="action" value="add">
+    <input name="name" placeholder="e.g., forearms" required>
+    <button class="btn-primary" type="submit">Add</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>All Muscles</h3>
+  {% if muscles %}
+  <table class="table">
+    <thead><tr><th>Name</th><th style="width:220px">Actions</th></tr></thead>
+    <tbody>
+      {% for m in muscles %}
+      <tr>
+        <form method="post" action="{{ url_for('update_muscle', mid=m.id) }}">
+          <td><input name="name" value="{{ m.name }}" required></td>
+          <td class="row gap">
+            <button class="btn" type="submit">Save</button>
+        </form>
+            <form method="post" action="{{ url_for('delete_muscle', mid=m.id) }}" onsubmit="return confirm('Delete {{ m.name }}?');">
+              <button class="btn danger" type="submit">Delete</button>
+            </form>
+          </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No muscles yet.</p>
+  {% endif %}
+  <p><a class="btn" href="{{ url_for('exercises_bank') }}">← Back to Exercise Bank</a></p>
+</div>
+{% endblock %}
