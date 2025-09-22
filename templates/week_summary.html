@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ program.name }} — Week {{ week }} Summary</h2>
+
+<div class="card">
+  <p>
+    Weeks:
+    {% for w in weeks %}
+      <a class="chip {% if w == week %}chip-active{% endif %}" href="{{ url_for('view_program_week', program_id=program.id, week=w) }}">{{ w }}</a>
+    {% endfor %}
+    <a class="btn" href="{{ url_for('current_program') }}">Back</a>
+  </p>
+</div>
+
+{% for d, ex_items in days_summary %}
+  <div class="card">
+    <h3>{{ d.day_name }}</h3>
+    {% if ex_items %}
+      <ul class="bullets">
+        {% for ex, sets in ex_items %}
+          <li>
+            <strong>{{ ex.name }}</strong>
+            <ul class="bullets">
+              {% for s in sets %}
+                <li>Set {{ s.set_number }}: {{ s.reps }} reps @ {{ s.weight }}
+                  {% if s.target_reps %} (target {{ s.target_reps }}){% endif %}
+                  {% if s.progressed is not none %} — {% if s.progressed %}<span class="good">progress</span>{% else %}<span class="bad">no progress</span>{% endif %}{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No logs yet for this day/week.</p>
+    {% endif %}
+  </div>
+{% endfor %}
+{% endblock %}

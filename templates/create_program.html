@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Create Program</h2>
+
+<div class="card">
+  <form method="post" class="grid2">
+    <div>
+      <label>Program name</label>
+      <input name="name" value="My Program">
+    </div>
+
+    <div>
+      <label>Split</label>
+      <select name="split">
+        <option value="PPL">Push/Pull/Legs</option>
+        <option value="UL">Upper/Lower</option>
+        <option value="FB">Full Body</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Days per week</label>
+      <select name="days_per_week">
+        <option>3</option><option selected>4</option><option>5</option><option>6</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Target RIR</label>
+      <select name="target_rir">
+        <option>0</option><option>1</option><option selected>2</option><option>3</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Duration (weeks)</label>
+      <select name="duration_weeks">
+        <option>6</option><option selected>8</option><option>10</option><option>12</option>
+      </select>
+    </div>
+
+    <div class="col-span-2">
+      <label class="row gap">
+        <input type="checkbox" name="deload"> <span>Include deload at end</span>
+      </label>
+    </div>
+
+    <div class="col-span-2">
+      <button class="btn-primary" type="submit">Create Program</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <p class="muted">After creating, go into each day and choose your exercises. When ready, press <strong>Start Program</strong> to lock them for the whole duration.</p>
+</div>
+{% endblock %}

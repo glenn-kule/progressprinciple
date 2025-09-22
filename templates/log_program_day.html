@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Log: {{ day.day_name }} — {{ program.name }}</h2>
+
+<div class="card">
+  <form method="post">
+    <div class="row">
+      <div>
+        <label>Week</label>
+        <select name="week_number">
+          {% for w in weeks %}
+            <option value="{{ w }}" {% if w == selected_week %}selected{% endif %}>Week {{ w }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="grow"></div>
+      <a class="btn" href="{{ url_for('view_program_week', program_id=program.id, week=selected_week) }}">View Week {{ selected_week }}</a>
+    </div>
+
+    {% for pe, rep_target, next_weight, default_weight, last_session_sets in per_ex %}
+      <fieldset class="block">
+        <legend>
+          {{ pe.exercise.name }} — {{ pe.target_sets }} sets
+          <span class="muted">(range {{ pe.rep_min }}–{{ pe.rep_max }}, target: {{ rep_target }} reps, RIR {{ pe.rir }})</span>
+          {% if next_weight %}<span class="pill">suggested next: {{ next_weight }}</span>{% endif %}
+        </legend>
+
+        {% for s_no in range(1, pe.target_sets+1) %}
+          <div class="row gap">
+            <span class="muted w80">Set {{ s_no }}</span>
+            <label>Reps
+              <input name="reps-{{ pe.id }}-{{ s_no }}" type="number" min="0" value="0">
+            </label>
+            <label>Weight
+              <input name="weight-{{ pe.id }}-{{ s_no }}" type="number" step="0.5" min="0" value="{{ default_weight }}">
+            </label>
+          </div>
+        {% endfor %}
+
+        {% if last_session_sets and last_session_sets|length > 0 %}
+          <div class="hint">
+            {% set best = (last_session_sets | max(attribute='reps')).reps %}
+            {% set topw = (last_session_sets | max(attribute='weight')).weight %}
+            Last session: best reps {{ best }}, top weight {{ topw }}.
+            {% if best >= pe.rep_max %}<strong class="good">Hit cap last time → increase weight this session.</strong>{% endif %}
+          </div>
+        {% endif %}
+      </fieldset>
+    {% endfor %}
+
+    <button class="btn-primary" type="submit">Save Workout</button>
+  </form>
+</div>
+{% endblock %}

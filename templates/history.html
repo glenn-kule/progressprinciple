@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>History</h2>
+<ul>
+  {% for workout, sets in history_data %}
+    <li>
+      <strong>{{ workout.date }} — {{ workout.session_name }}</strong>
+      <ul>
+        {% for s in sets %}
+          <li>Set {{ s.set_number }}: {{ s.reps }} reps × {{ s.weight }} ({{ s.exercise.name }})</li>
+        {% else %}
+          <li>No sets logged.</li>
+        {% endfor %}
+      </ul>
+    </li>
+  {% else %}
+    <li>No workouts yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

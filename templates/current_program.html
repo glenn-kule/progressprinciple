@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Current Program</h2>
+
+<div class="card">
+  <p>
+    <strong>{{ program.name }}</strong> — {{ program.days_per_week }}d/wk,
+    {{ program.duration_weeks }} weeks{% if program.deload %} + deload{% endif %},
+    target RIR {{ program.target_rir }}.
+  </p>
+  <p><strong>Status:</strong> {% if program.locked %}<span class="pill pill-ok">Started</span>{% else %}<span class="pill">Draft</span>{% endif %}</p>
+  <p><strong>Current week:</strong> Week {{ current_week }}</p>
+  <p>
+    Weeks:
+    {% for w in weeks %}
+      <a class="chip {% if w == current_week %}chip-active{% endif %}" href="{{ url_for('view_program_week', program_id=program.id, week=w) }}">{{ w }}</a>
+    {% endfor %}
+  </p>
+  {% if not program.locked %}
+    <form method="post" action="{{ url_for('start_program', program_id=program.id) }}">
+      <button class="btn-primary" type="submit">Start Program (lock exercises)</button>
+    </form>
+  {% endif %}
+</div>
+
+<ul class="day-list">
+  {% for d, pes in day_blocks %}
+    <li class="card">
+      <div class="row">
+        <h3>{{ d.day_name }}</h3>
+        <div class="actions">
+          {% if not program.locked %}
+            <a class="btn" href="{{ url_for('edit_program_day', program_id=program.id, day_id=d.id) }}">Edit Day</a>
+          {% endif %}
+          <a class="btn" href="{{ url_for('log_program_day', day_id=d.id, week_number=current_week) }}">Log (Week {{ current_week }})</a>
+        </div>
+      </div>
+      {% if pes %}
+        <ul class="bullets">
+          {% for pe in pes %}
+            <li>{{ pe.exercise.name }} — {{ pe.target_sets }} sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No exercises yet.</p>
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>
+{% endblock %}

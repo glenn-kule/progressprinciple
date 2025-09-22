@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Exercise Bank</h2>
+
+<div class="card">
+  <h3>Add Exercise</h3>
+  <form method="post" class="grid2">
+    <div>
+      <label>Name</label>
+      <input name="name" placeholder="Incline Smith Press">
+    </div>
+    <div>
+      <label>Muscle group</label>
+      <select name="muscle_group">
+        {% for g in groups %}
+          <option value="{{ g }}">{{ g }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-span-2">
+      <button class="btn-primary" type="submit">Add</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3>All Exercises</h3>
+  <ul class="bullets">
+    {% for ex in exercises %}
+      <li>{{ ex.muscle_group }} — {{ ex.name }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

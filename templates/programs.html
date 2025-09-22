@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Program History</h2>
+<div class="card">
+{% if past %}
+  <ul class="bullets">
+    {% for p in past %}
+      <li>
+        <strong>{{ p.name }}</strong> — {{ p.days_per_week }}d/wk, {{ p.duration_weeks }} weeks{% if p.deload %} + deload{% endif %},
+        RIR {{ p.target_rir }} (started {{ p.start_date }})
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">No past programs yet.</p>
+{% endif %}
+</div>
+{% endblock %}

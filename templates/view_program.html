@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Program: {{ program.name }} ({{ program.days_per_week }}d/wk, RIR {{ program.target_rir }})</h2>
+
+<ul>
+  {% for d, pes in day_blocks %}
+    <li>
+      <strong>{{ d.day_name }}</strong>
+      <ul>
+        {% for pe in pes %}
+          <li>{{ pe.exercise.name }} — {{ pe.target_sets }} sets @ {{ pe.target_reps }} (RIR {{ pe.rir }})</li>
+        {% endfor %}
+      </ul>
+      <a href="{{ url_for('log_program_day', day_id=d.id) }}">Log this day</a>
+    </li>
+  {% endfor %}
+</ul>
+{% endblock %}

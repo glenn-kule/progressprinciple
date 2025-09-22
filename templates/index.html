@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Welcome</h1>
+{% if active %}
+  <div class="card">
+    <p>Active program: <strong>{{ active.name }}</strong></p>
+    <a class="btn" href="{{ url_for('current_program') }}">Open Current Program</a>
+  </div>
+{% else %}
+  <div class="card">
+    <p>No active program yet.</p>
+    <a class="btn" href="{{ url_for('create_program') }}">Create Program</a>
+  </div>
+{% endif %}
+{% endblock %}

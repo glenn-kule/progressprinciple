@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Quick Log (freeform)</h2>
+<div class="card">
+  <form method="post" class="grid2">
+    <div>
+      <label>Session name</label>
+      <input name="session_name" placeholder="Push A">
+    </div>
+    <div>
+      <label>Exercise</label>
+      <select name="exercise_id">
+        {% for ex in exercises %}
+          <option value="{{ ex.id }}">{{ ex.muscle_group }} — {{ ex.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Reps</label>
+      <input name="reps" type="number" min="1" value="8">
+    </div>
+    <div>
+      <label>Weight</label>
+      <input name="weight" type="number" step="0.5" value="50">
+    </div>
+    <div class="col-span-2">
+      <button class="btn-primary" type="submit">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
