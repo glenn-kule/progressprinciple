@@ -4,17 +4,11 @@
     <meta charset="utf-8"/>
     <title>ProgressPrinciple</title>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <meta name="theme-color" content="#2563EB"/>
-
-    <!-- Icons + Manifest (served from /static/icons/) -->
-    <link rel="icon" href="{{ url_for('static', filename='icons/favicon.ico') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32x32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='icons/favicon-16x16.png') }}">
+    <meta name="theme-color" content="#3b82f6"/>
+    <link rel="manifest" href="{{ url_for('static', filename='icons/site.webmanifest') }}?v=4">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
-    <link rel="manifest" href="{{ url_for('static', filename='icons/site.webmanifest') }}?v=1">
-
+    <link rel="icon" href="{{ url_for('static', filename='icons/favicon.ico') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -25,15 +19,26 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">ProgressPrinciple</div>
+      <div class="brand">
+        <img src="{{ url_for('static', filename='icons/android-chrome-192x192.png') }}" alt="" class="brand-icon">
+        <span>ProgressPrinciple</span>
+      </div>
+      <button class="nav-toggle" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
       <nav class="nav">
-        <a href="{{ url_for('index') }}">Home</a>
-        <a href="{{ url_for('current_program') }}">Current</a>
-        <a href="{{ url_for('create_program') }}">Create</a>
-        <a href="{{ url_for('exercises_bank') }}">Exercises</a>
-        <a href="{{ url_for('programs_history') }}">History</a>
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('current_program') }}">Current</a>
+          <a href="{{ url_for('create_program') }}">Create</a>
+          <a href="{{ url_for('exercises_bank') }}">Exercises</a>
+          <a href="{{ url_for('programs_history') }}">History</a>
+          <span class="muted hide-sm">| {{ current_user.email }}</span>
+          <a href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+          <a href="{{ url_for('login') }}">Login</a>
+          <a href="{{ url_for('signup') }}">Sign Up</a>
+        {% endif %}
       </nav>
     </header>
+
     <main class="container">
       {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -44,6 +49,7 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </main>
-    <footer class="footer">© {{ 2025 }} ProgressPrinciple</footer>
+
+    <footer class="footer">© 2025 ProgressPrinciple</footer>
   </body>
 </html>

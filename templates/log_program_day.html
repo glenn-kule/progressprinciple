@@ -3,56 +3,78 @@
 <h2>Log: {{ day.day_name }} — {{ program.name }}</h2>
 
 <div class="card">
-  <form method="post">
-    <div class="row">
+  <form method="post" id="log-form">
+    <div class="row gap" style="flex-wrap:wrap">
       <div>
         <label>Week</label>
-        <select name="week_number">
+        <select name="week_number" onchange="document.getElementById('log-form').submit()">
           {% for w in weeks %}
-            <option value="{{ w }}" {% if w == selected_week %}selected{% endif %}>Week {{ w }}</option>
+            <option value="{{ w }}" {% if w==selected_week %}selected{% endif %}>Week {{ w }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="grow"></div>
       {% if deload_now %}
-        <span class="pill">Deload week</span>
+        <div class="row gap" style="align-items:center">
+          <span class="btn" style="background:#fffbeb; border-color:#fde68a; color:#92400e;">Deload week: reduced sets</span>
+        </div>
       {% endif %}
-      <a class="btn" href="{{ url_for('view_program_week', program_id=program.id, week=selected_week) }}">View Week {{ selected_week }}</a>
     </div>
 
     {% for pe, rep_target, next_weight, default_weight, last_session_sets, sets_this_session in per_ex %}
-      <fieldset class="block">
-        <legend>
-          {{ pe.exercise.name }} — {{ sets_this_session }} sets
-          <span class="muted">(range {{ pe.rep_min }}–{{ pe.rep_max }}, target: {{ rep_target }} reps, RIR {{ pe.rir }})</span>
-          {% if next_weight %}<span class="pill">suggest next: {{ next_weight }}</span>{% endif %}
-          {% if sets_this_session != pe.target_sets %}<span class="pill">deload volume</span>{% endif %}
-        </legend>
-
-        {% for s_no in range(1, sets_this_session+1) %}
-          <div class="row gap">
-            <span class="muted w80">Set {{ s_no }}</span>
-            <label>Reps
-              <input name="reps-{{ pe.id }}-{{ s_no }}" type="number" min="0" value="0">
-            </label>
-            <label>Weight
-              <input name="weight-{{ pe.id }}-{{ s_no }}" type="number" step="0.5" min="0" value="{{ default_weight }}">
-            </label>
+      <div class="card">
+        <div class="row gap" style="justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600">{{ pe.exercise.name }}</div>
+            <div class="muted" style="font-size:13px">
+              Target reps: <strong>{{ rep_target }}</strong>
+              {% if next_weight %}
+                • Next weight: <strong>{{ next_weight }} lb</strong>
+              {% endif %}
+              • Sets this session: <strong>{{ sets_this_session }}</strong>
+            </div>
           </div>
-        {% endfor %}
+        </div>
 
         {% if last_session_sets and last_session_sets|length > 0 %}
-          <div class="hint">
-            {% set best = (last_session_sets | max(attribute='reps')).reps %}
-            {% set topw = (last_session_sets | max(attribute='weight')).weight %}
-            Last session: best reps {{ best }}, top weight {{ topw }}.
-            {% if best >= pe.rep_max %}<strong class="good">Hit cap last time → increase weight.</strong>{% endif %}
+          <div class="muted" style="font-size:12px; margin:6px 0 10px;">
+            Last session top set: {{ last_session_sets[-1].reps }} reps @ {{ last_session_sets[-1].weight }} lb
           </div>
         {% endif %}
-      </fieldset>
+
+        {% for s in range(1, sets_this_session+1) %}
+          <div class="set-row">
+            <div>
+              <label>Reps (Set {{ s }})</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="reps-{{ pe.id }}-{{ s }}" placeholder="{{ rep_target }}">
+            </div>
+            <div>
+              <label>Weight</label>
+              <input inputmode="decimal" name="weight-{{ pe.id }}-{{ s }}" placeholder="{{ default_weight or '' }}">
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <div class="muted">Goal: {{ rep_target }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     {% endfor %}
 
-    <button class="btn-primary" type="submit">Save Workout</button>
+    <!-- Fallback submit in content (for desktop users) -->
+    <div class="row gap">
+      <button class="btn-primary" type="submit">Save Workout</button>
+      <a class="btn" href="{{ url_for('current_program') }}">Cancel</a>
+    </div>
   </form>
+</div>
+
+<!-- Sticky Save (mobile friendly) -->
+<div class="sticky-save">
+  <div class="inner">
+    <div class="grow">
+      <div class="muted" style="font-size:12px;">{{ day.day_name }} • Week {{ selected_week }}{% if deload_now %} • Deload{% endif %}</div>
+    </div>
+    <button class="btn-primary" form="log-form" type="submit">Save</button>
+  </div>
 </div>
 {% endblock %}
