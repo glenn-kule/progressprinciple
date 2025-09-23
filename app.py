@@ -1,28 +1,31 @@
 import os
+from datetime import date, datetime
 from math import ceil
-from datetime import datetime, date
+
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
+from flask_migrate import Migrate  # <-- import is fine up here
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_migrate import Migrate
-migrate = Migrate(app, db)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
 
-# --- DATABASE CONFIG ---
+# --- DB CONFIG ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL or f"sqlite:///{os.path.join(os.path.dirname(__file__),'hypertrophy_v2.db')}"
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL or "sqlite:///hypertrophy_v2.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
+db = SQLAlchemy(app)           # <-- create db AFTER app
+migrate = Migrate(app, db)     # <-- then register Migrate(app, db)
+
+# ... then your models, routes, etc. ...
+
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"  # redirect here if not authed
