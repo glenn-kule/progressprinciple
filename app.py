@@ -9,6 +9,7 @@ from flask_login import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
+migrate = Migrate(app, db)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
