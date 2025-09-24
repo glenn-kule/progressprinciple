@@ -1,15 +1,173 @@
+# ---------- imports (top of file) ----------
 import os
-from datetime import date, datetime
+from datetime import datetime, date
 from math import ceil
 
-from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
+from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, abort
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_migrate import Migrate
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# ---------- app & db init ----------
+app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL or "sqlite:///hypertrophy_v2.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+# =========================
+# AUTH: Flask-Login wiring
+# =========================
 from flask_login import (
     LoginManager, UserMixin, login_user, logout_user,
     login_required, current_user
 )
-from flask_migrate import Migrate  # <-- import is fine up here
 from werkzeug.security import generate_password_hash, check_password_hash
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"   # where to send unauth'd users
+
+# --- If your User model isn't defined yet, leave user_loader and routes here;
+#     your actual User class must include: id, email, password_hash and inherit UserMixin.
+
+@login_manager.user_loader
+def load_user(user_id: str):
+    try:
+        return User.query.get(int(user_id))
+    except Exception:
+        return None
+
+# ---------- Auth routes ----------
+@app.get("/login")
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("current_program"))
+    return render_template("login.html")
+
+@app.post("/login")
+def login_post():
+    if current_user.is_authenticated:
+        return redirect(url_for("current_program"))
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    if not email or not password:
+        flash("Please enter email and password.")
+        return redirect(url_for("login"))
+    user = User.query.filter_by(email=email).first()
+    if not user or not user.check_password(password):
+        flash("Invalid email or password.")
+        return redirect(url_for("login"))
+    login_user(user)  # log them in
+    flash("Welcome back!")
+    next_url = request.args.get("next")
+    return redirect(next_url or url_for("current_program"))
+
+@app.get("/signup")
+def signup():
+    if current_user.is_authenticated:
+        return redirect(url_for("current_program"))
+    return render_template("signup.html")
+
+@app.post("/signup")
+def signup_post():
+    if current_user.is_authenticated:
+        return redirect(url_for("current_program"))
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    if not email or not password:
+        flash("Please enter email and password.")
+        return redirect(url_for("signup"))
+
+    existing = User.query.filter_by(email=email).first()
+    if existing:
+        flash("That email is already in use.")
+        return redirect(url_for("signup"))
+
+    user = User(email=email)
+    user.set_password(password)  # hashes
+    db.session.add(user)
+    db.session.commit()
+    login_user(user)
+    flash("Account created — let’s build your program.")
+    return redirect(url_for("current_program"))
+
+@app.get("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("Logged out.")
+    return redirect(url_for("login"))
+
+
+# ---------- MODELS ----------
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    def set_password(self, raw): self.password_hash = generate_password_hash(raw)
+    def check_password(self, raw): return check_password_hash(self.password_hash, raw)
+
+class MuscleGroup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(32), unique=True, nullable=False)
+
+class Exercise(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True, nullable=False)
+    muscle_group = db.Column(db.String(32), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)  # NULL = global
+
+# ... your other models: Program, ProgramDay, ProgramExercise, Workout, SetLog ...
+# make sure Program has fields: duration_weeks, deload_week (nullable), user_id, locked, etc.
+
+# ---------- ROUTES ----------
+# (login/signup/logout, index/current_program/etc...)
+
+from flask import abort  # keep this import at the top of app.py with your other imports
+
+@app.route("/program/<int:program_id>/deload", methods=["POST"], endpoint="set_deload")
+@login_required
+def set_deload(program_id):
+    # Program must exist and belong to the current user
+    prog = Program.query.get_or_404(program_id)
+    if prog.user_id != current_user.id:
+        abort(403)
+
+    action = request.form.get("action", "set")
+    if action == "clear":
+        prog.deload_week = None
+        db.session.commit()
+        flash("Deload cleared for this program.")
+        return redirect(url_for("current_program"))
+
+    # set a deload week
+    week_raw = request.form.get("deload_week")
+    try:
+        w = int(week_raw) if week_raw is not None else None
+        if not w or w < 1 or w > (prog.duration_weeks or 1):
+            raise ValueError
+    except Exception:
+        flash("Invalid deload week.", "error")
+        return redirect(url_for("current_program"))
+
+    prog.deload_week = w
+    db.session.commit()
+    flash(f"Deload scheduled for week {w}.")
+    return redirect(url_for("current_program"))
+
+
+# ... rest of your routes ...
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
