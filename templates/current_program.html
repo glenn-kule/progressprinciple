@@ -1,72 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Current Program</h2>
+<h2>Current Program — {{ program.name }}</h2>
 
+<!-- Deload controls -->
 <div class="card">
-  <p>
-    <strong>{{ program.name }}</strong> — {{ program.days_per_week }}d/wk,
-    {{ program.duration_weeks }} weeks{% if program.deload %} (end deload option){% endif %},
-    target RIR {{ program.target_rir }}.
-  </p>
-  <p><strong>Status:</strong> {% if program.locked %}<span class="pill pill-ok">Started</span>{% else %}<span class="pill">Draft</span>{% endif %}</p>
-  <p><strong>Current week:</strong> Week {{ current_week }}</p>
-
-  <form method="post" action="{{ url_for('set_deload', program_id=program.id) }}" class="row gap" style="margin:8px 0;">
-    <label>Deload week:
-      <select name="deload_week">
-        <option value="none" {% if not program.deload_week %}selected{% endif %}>None</option>
-        {% for w in weeks %}
-          <option value="{{ w }}" {% if program.deload_week == w %}selected{% endif %}>Week {{ w }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <button class="btn" type="submit">Save</button>
+  <!-- post directly to the path so we don't depend on endpoint naming -->
+  <form method="post" action="/program/{{ program.id }}/deload" class="row gap" style="flex-wrap:wrap;">
+    <label>Deload week</label>
+    <select name="deload_week">
+      {% for w in weeks %}
+        <option value="{{ w }}" {% if program.deload_week == w %}selected{% endif %}>Week {{ w }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn" type="submit" name="action" value="set">Set deload</button>
+    {% if program.deload_week %}
+      <button class="btn danger" type="submit" name="action" value="clear">Clear deload</button>
+    {% endif %}
   </form>
-
-  <p>
-    Weeks:
-    {% for w in weeks %}
-      <a class="chip {% if w == current_week %}chip-active{% endif %}" href="{{ url_for('view_program_week', program_id=program.id, week=w) }}">{{ w }}</a>
-    {% endfor %}
-  </p>
-
-  {% if not program.locked %}
-    <form method="post" action="{{ url_for('start_program', program_id=program.id) }}" style="margin-top:8px">
-      <button class="btn-primary" type="submit">Start Program (lock exercises)</button>
-    </form>
-
-    <form method="post" action="{{ url_for('add_day', program_id=program.id) }}" class="row gap" style="margin-top:10px;">
-      <input name="day_name" placeholder="New day name (optional)" />
-      <button class="btn" type="submit">Add Day</button>
-    </form>
+  {% if program.deload_week %}
+    <div class="muted" style="margin-top:6px;font-size:13px;">
+      Deload is scheduled for <strong>Week {{ program.deload_week }}</strong>.
+    </div>
   {% endif %}
 </div>
 
-<ul class="day-list">
-  {% for d, pes in day_blocks %}
-    <li class="card">
-      <div class="row">
-        <h3>{{ d.day_name }}</h3>
-        <div class="actions">
-          {% if not program.locked %}
-            <a class="btn" href="{{ url_for('edit_program_day', program_id=program.id, day_id=d.id) }}">Edit Day</a>
-            <form method="post" action="{{ url_for('remove_day', day_id=d.id) }}" style="display:inline;">
-              <button class="btn danger" type="submit">Remove Day</button>
-            </form>
-          {% endif %}
-          <a class="btn" href="{{ url_for('log_program_day', day_id=d.id, week_number=current_week) }}">Log (Week {{ current_week }})</a>
-        </div>
+<!-- Week selector -->
+<div class="card">
+  <form method="get" class="row gap" style="flex-wrap:wrap;">
+    <label>Week</label>
+    <select name="week" onchange="this.form.submit()">
+      {% for w in weeks %}
+        <option value="{{ w }}" {% if w == current_week %}selected{% endif %}>Week {{ w }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button class="btn" type="submit">Go</button></noscript>
+  </form>
+</div>
+
+<!-- Days (day_blocks is a list of tuples) -->
+{% for day, exercises in day_blocks %}
+  <div class="card">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <h3>{{ day.day_name }}</h3>
+      <div class="row gap">
+        <!-- include BOTH program_id and day_id to satisfy route signature -->
+        <a class="btn" href="{{ url_for('edit_program_day', program_id=program.id, day_id=day.id) }}">Edit Day</a>
+        <a class="btn" href="{{ url_for('remove_program_day', program_id=program.id, day_id=day.id) }}">Remove Day</a>
+        <a class="btn" href="{{ url_for('log_program_day', program_id=program.id, day_id=day.id, week=current_week) }}">Log (Week {{ current_week }})</a>
       </div>
-      {% if pes %}
-        <ul class="bullets">
-          {% for pe in pes %}
-            <li>{{ pe.exercise.name }} — {{ pe.target_sets }} sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})</li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="muted">No exercises yet.</p>
-      {% endif %}
-    </li>
-  {% endfor %}
-</ul>
+    </div>
+    {% if exercises %}
+      <ul style="margin:6px 0 0 20px;">
+        {% for pe in exercises %}
+          <li>
+            {{ pe.exercise.name }} — {{ pe.sets }} sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="muted" style="margin-top:6px;">No exercises added yet.</div>
+    {% endif %}
+  </div>
+{% endfor %}
+
 {% endblock %}
