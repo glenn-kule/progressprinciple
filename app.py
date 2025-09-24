@@ -640,6 +640,32 @@ def sort_program_day(day_id):
     db.session.commit()
     return jsonify({"ok": True})
 
+# ----- Remove a program day (and its exercises) -----
+from flask import abort, flash, redirect, url_for  # make sure these are imported at top
+from flask_login import login_required, current_user
+
+@app.post("/program/<int:program_id>/day/<int:day_id>/remove", endpoint="remove_program_day")
+@login_required
+def remove_program_day(program_id, day_id):
+    # Load and ownership-check program
+    prog = Program.query.get_or_404(program_id)
+    if prog.user_id != current_user.id:
+        abort(403)
+
+    # Load day and verify it belongs to the program
+    day = ProgramDay.query.get_or_404(day_id)
+    if day.program_id != prog.id:
+        abort(404)
+
+    # Remove all exercises under this day, then the day
+    ProgramExercise.query.filter_by(program_day_id=day.id).delete()
+    db.session.delete(day)
+    db.session.commit()
+
+    flash("Day removed.")
+    return redirect(url_for("current_program"))
+
+
 @app.route("/program/<int:program_id>/add-day", methods=["POST"])
 @login_required
 def add_day(program_id):

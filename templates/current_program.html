@@ -43,12 +43,20 @@
     <div class="row" style="justify-content:space-between; align-items:center;">
       <h3>{{ day.day_name }}</h3>
       <div class="row gap">
-        <!-- include BOTH program_id and day_id to satisfy route signature -->
+        <!-- Include BOTH program_id and day_id for routes that expect both -->
         <a class="btn" href="{{ url_for('edit_program_day', program_id=program.id, day_id=day.id) }}">Edit Day</a>
-        <a class="btn" href="{{ url_for('remove_program_day', program_id=program.id, day_id=day.id) }}">Remove Day</a>
-        <a class="btn" href="{{ url_for('log_program_day', program_id=program.id, day_id=day.id, week=current_week) }}">Log (Week {{ current_week }})</a>
+
+        <!-- Remove as POST form to our new endpoint -->
+        <form method="post" action="/program/{{ program.id }}/day/{{ day.id }}/remove" style="display:inline;">
+          <button class="btn danger" type="submit">Remove Day</button>
+        </form>
+
+        <a class="btn" href="{{ url_for('log_program_day', program_id=program.id, day_id=day.id, week=current_week) }}">
+          Log (Week {{ current_week }})
+        </a>
       </div>
     </div>
+
     {% if exercises %}
       <ul style="margin:6px 0 0 20px;">
         {% for pe in exercises %}
