@@ -31,7 +31,7 @@ ordered-set==4.1.0
 packaging==25.0
 parso==0.8.5
 prompt_toolkit==3.0.52
-psycopg[binary]==3.2.1
+psycopg[binary]==3.2.10
 pure_eval==0.2.3
 Pygments==2.19.2
 rich==14.1.0
