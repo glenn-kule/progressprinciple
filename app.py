@@ -15,15 +15,51 @@ from flask_login import (
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# NEW: security & email & rate-limit
+from flask_wtf.csrf import CSRFProtect
+from flask_mail import Mail
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# (Optional) Sentry
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+    SENTRY_DSN = os.getenv("SENTRY_DSN")
+    if SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[FlaskIntegration()],
+            traces_sample_rate=0.1,
+            profiles_sample_rate=0.1,
+            send_default_pii=False,
+        )
+except Exception:
+    pass
+
 # ---------- app & db init ----------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Normalize to psycopg v3 dialect so it works on Python 3.13
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL or "sqlite:///hypertrophy_v2.db"
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Secure cookies
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,          # True on HTTPS (Render). Locally on HTTP, set False.
+    REMEMBER_COOKIE_SECURE=True,         # True on HTTPS
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -31,11 +67,29 @@ migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
+# CSRF
+csrf = CSRFProtect(app)
+
+# Mail
+app.config.update(
+    MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
+    MAIL_PORT=int(os.getenv("MAIL_PORT", "587")),
+    MAIL_USE_TLS=os.getenv("MAIL_USE_TLS", "1") == "1",
+    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
+    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
+    MAIL_DEFAULT_SENDER=os.getenv("MAIL_DEFAULT_SENDER", "no-reply@hypertrophy.app"),
+)
+mail = Mail(app)
+
+# Limiter
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day"])
+
 # ---------- MODELS ----------
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    is_email_verified = db.Column(db.Boolean, default=False)  # NEW
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     def set_password(self, raw): self.password_hash = generate_password_hash(raw)
     def check_password(self, raw): return check_password_hash(self.password_hash, raw)
@@ -195,8 +249,13 @@ def mark_progress(rep_target: int, reps: int, weight: float, last_top_weight: fl
         return True
     return reps >= rep_target
 
+# ---------- Register email blueprint ----------
+from auth_email import bp as auth_email_bp
+app.register_blueprint(auth_email_bp)
+
 # ---------- AUTH ----------
 @app.route("/signup", methods=["GET","POST"])
+@limiter.limit("3 per minute; 30 per hour")
 def signup():
     if request.method == "POST":
         email = (request.form.get("email") or "").lower().strip()
@@ -210,12 +269,16 @@ def signup():
         u = User(email=email)
         u.set_password(pw)
         db.session.add(u); db.session.commit()
-        login_user(u)
-        flash("Welcome! Account created.")
-        return redirect(url_for("current_program"))
+
+        # send verification email
+        from auth_email import send_verification_email
+        send_verification_email(u)
+        flash("Account created. Check your email to verify your account.", "info")
+        return redirect(url_for("login"))
     return render_template("signup.html")
 
 @app.route("/login", methods=["GET","POST"])
+@limiter.limit("5 per minute; 50 per hour")
 def login():
     if request.method == "POST":
         email = (request.form.get("email") or "").lower().strip()
@@ -223,6 +286,9 @@ def login():
         u = User.query.filter_by(email=email).first()
         if not u or not u.check_password(pw):
             flash("Invalid email or password.")
+            return redirect(url_for("login"))
+        if not u.is_email_verified:
+            flash("Please verify your email before logging in.", "warning")
             return redirect(url_for("login"))
         login_user(u, remember=True)
         flash("Logged in.")
@@ -337,7 +403,7 @@ def exercises_bank():
             db.session.commit()
             flash("Exercise added.")
         return redirect(url_for("exercises_bank"))
-    exercises = Exercise.query.filter(  # global + yours
+    exercises = Exercise.query.filter(
         (Exercise.owner_id == None) | (Exercise.owner_id == current_user.id)  # noqa: E711
     ).order_by(Exercise.muscle_group, Exercise.name).all()
     return render_template("exercises.html", exercises=exercises, muscles=muscles)
@@ -407,7 +473,6 @@ def create_program():
         return redirect(url_for("current_program"))
     return render_template("create_program.html")
 
-# EDIT day (matches template link /program/<id>/day/<id>/edit)
 @app.get("/program/<int:program_id>/day/<int:day_id>/edit")
 @login_required
 def edit_program_day(program_id, day_id):
@@ -418,12 +483,11 @@ def edit_program_day(program_id, day_id):
     allow_edit_exercises = not prog.locked
 
     pes = ProgramExercise.query.filter_by(day_id=day.id).order_by(ProgramExercise.position.asc(), ProgramExercise.id.asc()).all()
-    bank = Exercise.query.filter(  # global + yours
+    bank = Exercise.query.filter(
         (Exercise.owner_id == None) | (Exercise.owner_id == current_user.id)  # noqa: E711
     ).order_by(Exercise.muscle_group, Exercise.name).all()
     return render_template("edit_day.html", program=prog, day=day, pes=pes, bank=bank, allow_edit_exercises=allow_edit_exercises)
 
-# POST handler to add/update from edit page (kept as same endpoint for simplicity)
 @app.post("/program/<int:program_id>/edit-day/<int:day_id>")
 @login_required
 def edit_program_day_post(program_id, day_id):
@@ -458,7 +522,6 @@ def edit_program_day_post(program_id, day_id):
 
     return redirect(url_for("edit_program_day", program_id=program_id, day_id=day_id))
 
-# Delete a ProgramExercise row
 @app.post("/program/exercise/<int:pe_id>/delete")
 @login_required
 def delete_program_exercise(pe_id):
@@ -470,10 +533,9 @@ def delete_program_exercise(pe_id):
     db.session.delete(pe); db.session.commit(); flash("Exercise removed.")
     return redirect(url_for("edit_program_day", program_id=prog.id, day_id=day.id))
 
-# Start program (locks exercises)
-@app.post("/program/<int:program_id>/start")
+@app.post("/program/<int:program_id>/day/<int:day_id>/start")
 @login_required
-def start_program(program_id):
+def start_program(program_id, day_id=None):
     prog = Program.query.get_or_404(program_id)
     if prog.user_id != current_user.id: flash("Not your program."); return redirect(url_for("current_program"))
     if prog.locked: flash("Program already started."); return redirect(url_for("current_program"))
@@ -484,7 +546,6 @@ def start_program(program_id):
     flash("Program started. (You can still change sets.)")
     return redirect(url_for("current_program"))
 
-# Sort exercises within a day (drag&drop)
 @app.post("/program/day/<int:day_id>/sort")
 @login_required
 def sort_program_day(day_id):
@@ -500,7 +561,6 @@ def sort_program_day(day_id):
     db.session.commit()
     return jsonify({"ok": True})
 
-# Remove a whole day (matches template POST /program/<id>/day/<id>/remove)
 @app.post("/program/<int:program_id>/day/<int:day_id>/remove")
 @login_required
 def remove_program_day(program_id, day_id):
@@ -510,10 +570,8 @@ def remove_program_day(program_id, day_id):
     day = ProgramDay.query.get_or_404(day_id)
     if day.program_id != prog.id:
         abort(404)
-    # correct column is day_id, not program_day_id
     ProgramExercise.query.filter_by(day_id=day.id).delete()
     db.session.delete(day)
-    # re-index remaining days & update days_per_week
     days = ProgramDay.query.filter_by(program_id=prog.id).order_by(ProgramDay.day_index).all()
     for i, d in enumerate(days):
         d.day_index = i
@@ -522,7 +580,6 @@ def remove_program_day(program_id, day_id):
     flash("Day removed.")
     return redirect(url_for("current_program"))
 
-# Add a day
 @app.post("/program/<int:program_id>/add-day")
 @login_required
 def add_day(program_id):
@@ -536,7 +593,6 @@ def add_day(program_id):
     prog.days_per_week = next_idx + 1; db.session.commit(); flash("Day added.")
     return redirect(url_for("current_program"))
 
-# Deload controls (matches template POST /program/<id>/deload)
 @app.post("/program/<int:program_id>/deload")
 @login_required
 def set_deload(program_id):
@@ -559,7 +615,6 @@ def set_deload(program_id):
     return redirect(url_for("current_program"))
 
 # ---------- Logging ----------
-# Original logger (kept URL for backward compatibility)
 @app.route("/log/day/<int:day_id>", methods=["GET","POST"])
 @login_required
 def log_program_day(day_id):
@@ -572,7 +627,6 @@ def log_program_day(day_id):
     weeks = list(range(1, prog.duration_weeks + 1))
     default_wk = get_current_week(prog)
 
-    # accept both ?week= and ?week_number=
     selected_week = request.form.get("week_number") or request.args.get("week_number") or request.args.get("week")
     selected_week = int(selected_week or default_wk)
 
@@ -610,18 +664,16 @@ def log_program_day(day_id):
         per_ex=per_ex, deload_now=deload_now
     )
 
-# Alias that matches the template link /program/<id>/day/<id>/log
 @app.get("/program/<int:program_id>/day/<int:day_id>/log")
 @login_required
 def log_program_day_alias(program_id, day_id):
-    # forward ?week to the existing logger via ?week_number
     wk = request.args.get("week", type=int)
     args = {}
     if wk:
         args["week_number"] = wk
     return redirect(url_for("log_program_day", day_id=day_id, **args))
 
-# ---------- Startup patch (adds columns safely) ----------
+# ---------- Startup patch (temporary until migrations are clean) ----------
 def _ensure_columns():
     from sqlalchemy import inspect, text
     insp = inspect(db.engine)
@@ -648,6 +700,13 @@ def _ensure_columns():
     if not has_col("program","deload_week"):
         try:
             db.session.execute(text("ALTER TABLE program ADD COLUMN deload_week INTEGER"))
+            db.session.commit()
+        except Exception:
+            pass
+
+    if not has_col("user","is_email_verified"):
+        try:
+            db.session.execute(text("ALTER TABLE user ADD COLUMN is_email_verified BOOLEAN DEFAULT 0"))
             db.session.commit()
         except Exception:
             pass
