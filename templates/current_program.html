@@ -4,8 +4,8 @@
 
 <!-- Deload controls -->
 <div class="card">
-  <!-- Post directly to the path to avoid endpoint naming issues -->
   <form method="post" action="/program/{{ program.id }}/deload" class="row gap" style="flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Deload week</label>
     <select name="deload_week">
       {% for w in weeks %}
@@ -37,21 +37,18 @@
   </form>
 </div>
 
-<!-- Days (day_blocks is a list of tuples: (day, exercises)) -->
 {% for day, exercises in day_blocks %}
   <div class="card">
     <div class="row" style="justify-content:space-between; align-items:center;">
       <h3>{{ day.day_name }}</h3>
       <div class="row gap">
-        <!-- Edit Day (use literal path) -->
         <a class="btn" href="/program/{{ program.id }}/day/{{ day.id }}/edit">Edit Day</a>
 
-        <!-- Remove Day (POST form to literal path) -->
         <form method="post" action="/program/{{ program.id }}/day/{{ day.id }}/remove" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn danger" type="submit">Remove Day</button>
         </form>
 
-        <!-- Log Day for the selected week (use literal path + query param) -->
         <a class="btn" href="/program/{{ program.id }}/day/{{ day.id }}/log?week={{ current_week }}">
           Log (Week {{ current_week }})
         </a>
@@ -62,7 +59,7 @@
       <ul style="margin:6px 0 0 20px;">
         {% for pe in exercises %}
           <li>
-            {{ pe.exercise.name }} — {{ pe.sets }} sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})
+            {{ pe.exercise.name }} — {{ pe.target_sets }} sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})
           </li>
         {% endfor %}
       </ul>
@@ -71,5 +68,4 @@
     {% endif %}
   </div>
 {% endfor %}
-
 {% endblock %}

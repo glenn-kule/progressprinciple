@@ -3,6 +3,7 @@
 <h2>Create Account</h2>
 <div class="card">
   <form method="post" class="grid2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
       <label>Email</label>
       <input name="email" type="email" required placeholder="you@domain.com" autocomplete="email">
@@ -16,5 +17,6 @@
       <a class="btn" href="{{ url_for('login') }}">I already have an account</a>
     </div>
   </form>
+  <p class="muted" style="margin-top:8px;">After signup, check the blue message above for your verification link in dev.</p>
 </div>
 {% endblock %}

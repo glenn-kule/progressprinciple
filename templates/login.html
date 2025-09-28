@@ -3,6 +3,7 @@
 <h2>Log In</h2>
 <div class="card">
   <form method="post" class="grid2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
       <label>Email</label>
       <input name="email" type="email" required placeholder="you@domain.com" autocomplete="email">
@@ -16,5 +17,8 @@
       <a class="btn" href="{{ url_for('signup') }}">Create account</a>
     </div>
   </form>
+  <div style="margin-top:8px;">
+    <a href="{{ url_for('auth_email.request_password_reset') }}">Forgot your password?</a>
+  </div>
 </div>
 {% endblock %}

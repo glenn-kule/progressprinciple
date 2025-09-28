@@ -1,3 +1,16 @@
+# --- .env loader (safe if package missing) ---
+try:
+    from dotenv import load_dotenv
+    # Load variables from a local .env when running on your machine.
+    # (On Render, env vars come from the dashboard and this is harmless.)
+    load_dotenv()
+except Exception:
+    # If python-dotenv isn't installed, this no-ops so the app still runs.
+    def load_dotenv(*args, **kwargs):
+        pass
+# --- end .env loader ---
+
+
 # ---------- imports ----------
 import os
 from datetime import datetime, date
@@ -50,14 +63,14 @@ elif DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL or "sqlite:///hypertrophy_v2.db"
-
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Secure cookies
+# Secure cookies - conditional based on environment
+is_production = os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER')
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SECURE=True,          # True on HTTPS (Render). Locally on HTTP, set False.
-    REMEMBER_COOKIE_SECURE=True,         # True on HTTPS
+    SESSION_COOKIE_SECURE=is_production,      # Only secure cookies in production
+    REMEMBER_COOKIE_SECURE=is_production,     # Only secure cookies in production
     SESSION_COOKIE_SAMESITE="Lax",
 )
 
@@ -77,8 +90,11 @@ app.config.update(
     MAIL_USE_TLS=os.getenv("MAIL_USE_TLS", "1") == "1",
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-    MAIL_DEFAULT_SENDER=os.getenv("MAIL_DEFAULT_SENDER", "no-reply@hypertrophy.app"),
+    MAIL_DEFAULT_SENDER=os.getenv("MAIL_DEFAULT_SENDER") or os.getenv("MAIL_USERNAME"),
+    MAIL_SUPPRESS_SEND=os.getenv("MAIL_SUPPRESS_SEND", "1"),  # Suppress emails in dev
+    SECURITY_PASSWORD_SALT=os.getenv("SECURITY_PASSWORD_SALT", "dev-salt"),  # For token generation
 )
+
 mail = Mail(app)
 
 # Limiter
@@ -187,7 +203,11 @@ def seed_muscles():
     for n in defaults:
         if n not in existing:
             db.session.add(MuscleGroup(name=n))
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error seeding muscles: {e}")
 
 def seed_exercises():
     if Exercise.query.count() > 0:
@@ -200,13 +220,22 @@ def seed_exercises():
         ("Leg Press","legs"), ("Bicep Curl","biceps"),
         ("Triceps Pushdown","triceps"), ("Standing Calf Raise","calves")
     ]
-    for n,g in catalog: db.session.add(Exercise(name=n, muscle_group=g, owner_id=None))
-    db.session.commit()
+    for n,g in catalog: 
+        db.session.add(Exercise(name=n, muscle_group=g, owner_id=None))
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error seeding exercises: {e}")
 
 def archive_any_active_before_creating(uid: int):
-    for p in Program.query.filter_by(user_id=uid, status="active").all():
-        p.status = "archived"
-    db.session.commit()
+    try:
+        for p in Program.query.filter_by(user_id=uid, status="active").all():
+            p.status = "archived"
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error archiving programs: {e}")
 
 def get_current_week(program: Program) -> int:
     if not program.start_date: return 1
@@ -214,21 +243,25 @@ def get_current_week(program: Program) -> int:
     return max(1, min((days // 7) + 1, program.duration_weeks))
 
 def get_last_session_sets(uid: int, exercise_id: int):
-    from sqlalchemy import desc
-    last = (
-        db.session.query(SetLog.workout_id, Workout.date)
-        .join(Workout, Workout.id == SetLog.workout_id)
-        .filter(SetLog.user_id == uid, SetLog.exercise_id == exercise_id)
-        .order_by(desc(Workout.date), desc(SetLog.id))
-        .first()
-    )
-    if not last: return []
-    last_wid = last.workout_id
-    return (
-        SetLog.query.filter_by(user_id=uid, exercise_id=exercise_id, workout_id=last_wid)
-        .order_by(SetLog.set_number.asc())
-        .all()
-    )
+    try:
+        from sqlalchemy import desc
+        last = (
+            db.session.query(SetLog.workout_id, Workout.date)
+            .join(Workout, Workout.id == SetLog.workout_id)
+            .filter(SetLog.user_id == uid, SetLog.exercise_id == exercise_id)
+            .order_by(desc(Workout.date), desc(SetLog.id))
+            .first()
+        )
+        if not last: return []
+        last_wid = last.workout_id
+        return (
+            SetLog.query.filter_by(user_id=uid, exercise_id=exercise_id, workout_id=last_wid)
+            .order_by(SetLog.set_number.asc())
+            .all()
+        )
+    except Exception as e:
+        print(f"Error getting last session sets: {e}")
+        return []
 
 def is_deload_week(program: Program, week_num: int) -> bool:
     return program.deload_week is not None and week_num == program.deload_week
@@ -249,9 +282,14 @@ def mark_progress(rep_target: int, reps: int, weight: float, last_top_weight: fl
         return True
     return reps >= rep_target
 
-# ---------- Register email blueprint ----------
-from auth_email import bp as auth_email_bp
-app.register_blueprint(auth_email_bp)
+# ---------- Register email blueprint (import after models are defined) ----------
+try:
+    from auth_email import bp as auth_email_bp, init_auth_email
+    init_auth_email(app, db, mail, User)   # Initialize auth_email with required instances
+    app.register_blueprint(auth_email_bp)
+except ImportError as e:
+    print(f"Warning: Could not import auth_email module: {e}")
+    print("Email verification features will not be available.")
 
 # ---------- AUTH ----------
 @app.route("/signup", methods=["GET","POST"])
@@ -266,15 +304,30 @@ def signup():
         if User.query.filter_by(email=email).first():
             flash("Account already exists. Log in.")
             return redirect(url_for("login"))
-        u = User(email=email)
-        u.set_password(pw)
-        db.session.add(u); db.session.commit()
+        
+        try:
+            u = User(email=email)
+            u.set_password(pw)
+            db.session.add(u)
+            db.session.commit()
 
-        # send verification email
-        from auth_email import send_verification_email
-        send_verification_email(u)
-        flash("Account created. Check your email to verify your account.", "info")
-        return redirect(url_for("login"))
+            # send verification email (only if auth_email was imported successfully)
+            try:
+                from auth_email import send_verification_email
+                send_verification_email(u)
+                flash("Account created. Check your email to verify your account.", "info")
+            except ImportError:
+                # If email module not available, just verify the user automatically
+                u.is_email_verified = True
+                db.session.commit()
+                flash("Account created successfully. You can now log in.", "success")
+            
+            return redirect(url_for("login"))
+        except Exception as e:
+            db.session.rollback()
+            flash("Error creating account. Please try again.")
+            print(f"Signup error: {e}")
+            
     return render_template("signup.html")
 
 @app.route("/login", methods=["GET","POST"])
@@ -287,6 +340,7 @@ def login():
         if not u or not u.check_password(pw):
             flash("Invalid email or password.")
             return redirect(url_for("login"))
+        # Temporarily disable email verification requirement
         if not u.is_email_verified:
             flash("Please verify your email before logging in.", "warning")
             return redirect(url_for("login"))
@@ -341,9 +395,14 @@ def archive_program(program_id):
     if prog.user_id != current_user.id:
         flash("Not your program.")
         return redirect(url_for("current_program"))
-    prog.status = "archived"
-    db.session.commit()
-    flash("Program archived.")
+    try:
+        prog.status = "archived"
+        db.session.commit()
+        flash("Program archived.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error archiving program.")
+        print(f"Archive error: {e}")
     return redirect(url_for("programs_history"))
 
 # ---------- MUSCLE BANK ----------
@@ -357,7 +416,14 @@ def muscles():
         elif MuscleGroup.query.filter_by(name=name).first():
             flash("Muscle already exists.")
         else:
-            db.session.add(MuscleGroup(name=name)); db.session.commit(); flash("Muscle added.")
+            try:
+                db.session.add(MuscleGroup(name=name))
+                db.session.commit()
+                flash("Muscle added.")
+            except Exception as e:
+                db.session.rollback()
+                flash("Error adding muscle.")
+                print(f"Add muscle error: {e}")
         return redirect(url_for("muscles"))
     items = MuscleGroup.query.order_by(MuscleGroup.name).all()
     return render_template("muscles.html", muscles=items)
@@ -372,8 +438,15 @@ def update_muscle(mid):
     elif MuscleGroup.query.filter(MuscleGroup.id != mid, MuscleGroup.name == new).first():
         flash("Another muscle with that name exists.")
     else:
-        Exercise.query.filter_by(muscle_group=m.name).update({"muscle_group": new})
-        m.name = new; db.session.commit(); flash("Muscle updated (and exercises retagged).")
+        try:
+            Exercise.query.filter_by(muscle_group=m.name).update({"muscle_group": new})
+            m.name = new
+            db.session.commit()
+            flash("Muscle updated (and exercises retagged).")
+        except Exception as e:
+            db.session.rollback()
+            flash("Error updating muscle.")
+            print(f"Update muscle error: {e}")
     return redirect(url_for("muscles"))
 
 @app.route("/muscles/<int:mid>/delete", methods=["POST"])
@@ -383,7 +456,14 @@ def delete_muscle(mid):
     if Exercise.query.filter_by(muscle_group=m.name).count() > 0:
         flash(f"Cannot delete '{m.name}' — exercises use it.")
     else:
-        db.session.delete(m); db.session.commit(); flash("Muscle deleted.")
+        try:
+            db.session.delete(m)
+            db.session.commit()
+            flash("Muscle deleted.")
+        except Exception as e:
+            db.session.rollback()
+            flash("Error deleting muscle.")
+            print(f"Delete muscle error: {e}")
     return redirect(url_for("muscles"))
 
 # ---------- EXERCISE BANK ----------
@@ -399,9 +479,14 @@ def exercises_bank():
         elif Exercise.query.filter_by(name=name).first():
             flash("Exercise already exists.")
         else:
-            db.session.add(Exercise(name=name, muscle_group=group, owner_id=current_user.id))
-            db.session.commit()
-            flash("Exercise added.")
+            try:
+                db.session.add(Exercise(name=name, muscle_group=group, owner_id=current_user.id))
+                db.session.commit()
+                flash("Exercise added.")
+            except Exception as e:
+                db.session.rollback()
+                flash("Error adding exercise.")
+                print(f"Add exercise error: {e}")
         return redirect(url_for("exercises_bank"))
     exercises = Exercise.query.filter(
         (Exercise.owner_id == None) | (Exercise.owner_id == current_user.id)  # noqa: E711
@@ -424,10 +509,15 @@ def update_exercise(ex_id):
     if exists:
         flash("Another exercise has that name.")
         return redirect(url_for("exercises_bank"))
-    ex.name = new_name
-    ex.muscle_group = new_group
-    db.session.commit()
-    flash("Exercise updated.")
+    try:
+        ex.name = new_name
+        ex.muscle_group = new_group
+        db.session.commit()
+        flash("Exercise updated.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error updating exercise.")
+        print(f"Update exercise error: {e}")
     return redirect(url_for("exercises_bank"))
 
 @app.route("/exercises/<int:ex_id>/delete", methods=["POST"])
@@ -441,7 +531,14 @@ def delete_exercise(ex_id):
     if in_use > 0:
         flash(f"Cannot delete '{ex.name}' — used in {in_use} program day(s).")
         return redirect(url_for("exercises_bank"))
-    db.session.delete(ex); db.session.commit(); flash("Exercise deleted.")
+    try:
+        db.session.delete(ex)
+        db.session.commit()
+        flash("Exercise deleted.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error deleting exercise.")
+        print(f"Delete exercise error: {e}")
     return redirect(url_for("exercises_bank"))
 
 # ---------- PROGRAM CREATE / EDIT / LOCK ----------
@@ -456,21 +553,28 @@ def create_program():
         duration_weeks = int(request.form.get("duration_weeks","8"))
         deload = request.form.get("deload") == "on"
 
-        archive_any_active_before_creating(current_user.id)
+        try:
+            archive_any_active_before_creating(current_user.id)
 
-        prog = Program(
-            user_id=current_user.id,
-            name=name, days_per_week=days_per_week, target_rir=target_rir,
-            duration_weeks=duration_weeks, deload=deload, status="active", locked=False
-        )
-        db.session.add(prog); db.session.flush()
+            prog = Program(
+                user_id=current_user.id,
+                name=name, days_per_week=days_per_week, target_rir=target_rir,
+                duration_weeks=duration_weeks, deload=deload, status="active", locked=False
+            )
+            db.session.add(prog)
+            db.session.flush()
 
-        for idx, nm in enumerate(days_for_split(split, days_per_week)):
-            db.session.add(ProgramDay(program_id=prog.id, day_index=idx, day_name=nm))
-        db.session.commit()
+            for idx, nm in enumerate(days_for_split(split, days_per_week)):
+                db.session.add(ProgramDay(program_id=prog.id, day_index=idx, day_name=nm))
+            db.session.commit()
 
-        flash(f"Program '{prog.name}' created.")
-        return redirect(url_for("current_program"))
+            flash(f"Program '{prog.name}' created.")
+            return redirect(url_for("current_program"))
+        except Exception as e:
+            db.session.rollback()
+            flash("Error creating program.")
+            print(f"Create program error: {e}")
+            
     return render_template("create_program.html")
 
 @app.get("/program/<int:program_id>/day/<int:day_id>/edit")
@@ -478,7 +582,8 @@ def create_program():
 def edit_program_day(program_id, day_id):
     prog = Program.query.get_or_404(program_id)
     if prog.user_id != current_user.id:
-        flash("Not your program."); return redirect(url_for("current_program"))
+        flash("Not your program.")
+        return redirect(url_for("current_program"))
     day = ProgramDay.query.get_or_404(day_id)
     allow_edit_exercises = not prog.locked
 
@@ -493,7 +598,8 @@ def edit_program_day(program_id, day_id):
 def edit_program_day_post(program_id, day_id):
     prog = Program.query.get_or_404(program_id)
     if prog.user_id != current_user.id:
-        flash("Not your program."); return redirect(url_for("current_program"))
+        flash("Not your program.")
+        return redirect(url_for("current_program"))
     day = ProgramDay.query.get_or_404(day_id)
     allow_edit_exercises = not prog.locked
 
@@ -505,20 +611,35 @@ def edit_program_day_post(program_id, day_id):
         rep_max = int(request.form.get("rep_max","10"))
         rir = int(request.form.get("rir", str(prog.target_rir)))
         if ex_id and rep_min > 0 and rep_max >= rep_min and target_sets > 0:
-            max_pos = db.session.query(db.func.coalesce(db.func.max(ProgramExercise.position), -1)).filter_by(day_id=day.id).scalar() or -1
-            db.session.add(ProgramExercise(
-                day_id=day.id, exercise_id=ex_id, target_sets=target_sets,
-                rep_min=rep_min, rep_max=rep_max, rir=rir, position=max_pos+1
-            ))
-            db.session.commit(); flash("Exercise added.")
+            try:
+                max_pos = db.session.query(db.func.coalesce(db.func.max(ProgramExercise.position), -1)).filter_by(day_id=day.id).scalar() or -1
+                db.session.add(ProgramExercise(
+                    day_id=day.id, exercise_id=ex_id, target_sets=target_sets,
+                    rep_min=rep_min, rep_max=rep_max, rir=rir, position=max_pos+1
+                ))
+                db.session.commit()
+                flash("Exercise added.")
+            except Exception as e:
+                db.session.rollback()
+                flash("Error adding exercise.")
+                print(f"Add program exercise error: {e}")
         else:
             flash("Provide valid sets/rep range.")
     elif action == "update_sets":
         pe_id = int(request.form.get("pe_id"))
         new_sets = int(request.form.get("new_sets", "0"))
         pe = ProgramExercise.query.get_or_404(pe_id)
-        if new_sets < 1: flash("Sets must be >=1.")
-        else: pe.target_sets = new_sets; db.session.commit(); flash("Sets updated.")
+        if new_sets < 1:
+            flash("Sets must be >=1.")
+        else:
+            try:
+                pe.target_sets = new_sets
+                db.session.commit()
+                flash("Sets updated.")
+            except Exception as e:
+                db.session.rollback()
+                flash("Error updating sets.")
+                print(f"Update sets error: {e}")
 
     return redirect(url_for("edit_program_day", program_id=program_id, day_id=day_id))
 
@@ -528,22 +649,45 @@ def delete_program_exercise(pe_id):
     pe = ProgramExercise.query.get_or_404(pe_id)
     day = ProgramDay.query.get_or_404(pe.day_id)
     prog = Program.query.get_or_404(day.program_id)
-    if prog.user_id != current_user.id: flash("Not your program."); return redirect(url_for("current_program"))
-    if prog.locked: flash("Program is locked."); return redirect(url_for("current_program"))
-    db.session.delete(pe); db.session.commit(); flash("Exercise removed.")
+    if prog.user_id != current_user.id:
+        flash("Not your program.")
+        return redirect(url_for("current_program"))
+    if prog.locked:
+        flash("Program is locked.")
+        return redirect(url_for("current_program"))
+    try:
+        db.session.delete(pe)
+        db.session.commit()
+        flash("Exercise removed.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error removing exercise.")
+        print(f"Delete program exercise error: {e}")
     return redirect(url_for("edit_program_day", program_id=prog.id, day_id=day.id))
 
 @app.post("/program/<int:program_id>/day/<int:day_id>/start")
 @login_required
 def start_program(program_id, day_id=None):
     prog = Program.query.get_or_404(program_id)
-    if prog.user_id != current_user.id: flash("Not your program."); return redirect(url_for("current_program"))
-    if prog.locked: flash("Program already started."); return redirect(url_for("current_program"))
+    if prog.user_id != current_user.id:
+        flash("Not your program.")
+        return redirect(url_for("current_program"))
+    if prog.locked:
+        flash("Program already started.")
+        return redirect(url_for("current_program"))
     for d in ProgramDay.query.filter_by(program_id=prog.id).all():
         if ProgramExercise.query.filter_by(day_id=d.id).count() == 0:
-            flash(f"Add exercises to {d.day_name} before starting."); return redirect(url_for("current_program"))
-    prog.locked = True; prog.start_date = date.today(); db.session.commit()
-    flash("Program started. (You can still change sets.)")
+            flash(f"Add exercises to {d.day_name} before starting.")
+            return redirect(url_for("current_program"))
+    try:
+        prog.locked = True
+        prog.start_date = date.today()
+        db.session.commit()
+        flash("Program started. (You can still change sets.)")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error starting program.")
+        print(f"Start program error: {e}")
     return redirect(url_for("current_program"))
 
 @app.post("/program/day/<int:day_id>/sort")
@@ -554,12 +698,17 @@ def sort_program_day(day_id):
     if prog.user_id != current_user.id or prog.locked:
         return jsonify({"ok": False}), 400
     order = request.json.get("order", [])
-    for idx, pe_id in enumerate(order):
-        pe = ProgramExercise.query.get(int(pe_id))
-        if pe and pe.day_id == day.id:
-            pe.position = idx
-    db.session.commit()
-    return jsonify({"ok": True})
+    try:
+        for idx, pe_id in enumerate(order):
+            pe = ProgramExercise.query.get(int(pe_id))
+            if pe and pe.day_id == day.id:
+                pe.position = idx
+        db.session.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.session.rollback()
+        print(f"Sort program day error: {e}")
+        return jsonify({"ok": False}), 500
 
 @app.post("/program/<int:program_id>/day/<int:day_id>/remove")
 @login_required
@@ -570,14 +719,19 @@ def remove_program_day(program_id, day_id):
     day = ProgramDay.query.get_or_404(day_id)
     if day.program_id != prog.id:
         abort(404)
-    ProgramExercise.query.filter_by(day_id=day.id).delete()
-    db.session.delete(day)
-    days = ProgramDay.query.filter_by(program_id=prog.id).order_by(ProgramDay.day_index).all()
-    for i, d in enumerate(days):
-        d.day_index = i
-    prog.days_per_week = len(days)
-    db.session.commit()
-    flash("Day removed.")
+    try:
+        ProgramExercise.query.filter_by(day_id=day.id).delete()
+        db.session.delete(day)
+        days = ProgramDay.query.filter_by(program_id=prog.id).order_by(ProgramDay.day_index).all()
+        for i, d in enumerate(days):
+            d.day_index = i
+        prog.days_per_week = len(days)
+        db.session.commit()
+        flash("Day removed.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error removing day.")
+        print(f"Remove program day error: {e}")
     return redirect(url_for("current_program"))
 
 @app.post("/program/<int:program_id>/add-day")
@@ -585,12 +739,20 @@ def remove_program_day(program_id, day_id):
 def add_day(program_id):
     prog = Program.query.get_or_404(program_id)
     if prog.user_id != current_user.id or prog.locked:
-        flash("Cannot add day."); return redirect(url_for("current_program"))
-    next_idx = (db.session.query(db.func.coalesce(db.func.max(ProgramDay.day_index), -1))
-                .filter_by(program_id=prog.id).scalar() or -1) + 1
-    name = request.form.get("day_name", f"Day {next_idx+1}")
-    db.session.add(ProgramDay(program_id=prog.id, day_index=next_idx, day_name=name))
-    prog.days_per_week = next_idx + 1; db.session.commit(); flash("Day added.")
+        flash("Cannot add day.")
+        return redirect(url_for("current_program"))
+    try:
+        next_idx = (db.session.query(db.func.coalesce(db.func.max(ProgramDay.day_index), -1))
+                    .filter_by(program_id=prog.id).scalar() or -1) + 1
+        name = request.form.get("day_name", f"Day {next_idx+1}")
+        db.session.add(ProgramDay(program_id=prog.id, day_index=next_idx, day_name=name))
+        prog.days_per_week = next_idx + 1
+        db.session.commit()
+        flash("Day added.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error adding day.")
+        print(f"Add day error: {e}")
     return redirect(url_for("current_program"))
 
 @app.post("/program/<int:program_id>/deload")
@@ -600,18 +762,23 @@ def set_deload(program_id):
     if prog.user_id != current_user.id:
         abort(403)
     action = request.form.get("action", "set")
-    if action == "clear":
-        prog.deload_week = None
+    try:
+        if action == "clear":
+            prog.deload_week = None
+            db.session.commit()
+            flash("Deload cleared for this program.")
+            return redirect(url_for("current_program"))
+        w = request.form.get("deload_week", type=int)
+        if not w or w < 1 or w > (prog.duration_weeks or 1):
+            flash("Invalid deload week.", "error")
+            return redirect(url_for("current_program"))
+        prog.deload_week = w
         db.session.commit()
-        flash("Deload cleared for this program.")
-        return redirect(url_for("current_program"))
-    w = request.form.get("deload_week", type=int)
-    if not w or w < 1 or w > (prog.duration_weeks or 1):
-        flash("Invalid deload week.", "error")
-        return redirect(url_for("current_program"))
-    prog.deload_week = w
-    db.session.commit()
-    flash(f"Deload scheduled for week {w}.")
+        flash(f"Deload scheduled for week {w}.")
+    except Exception as e:
+        db.session.rollback()
+        flash("Error setting deload.")
+        print(f"Set deload error: {e}")
     return redirect(url_for("current_program"))
 
 # ---------- Logging ----------
@@ -621,7 +788,8 @@ def log_program_day(day_id):
     day = ProgramDay.query.get_or_404(day_id)
     prog = Program.query.get_or_404(day.program_id)
     if prog.user_id != current_user.id:
-        flash("Not your program."); return redirect(url_for("current_program"))
+        flash("Not your program.")
+        return redirect(url_for("current_program"))
     pes = ProgramExercise.query.filter_by(day_id=day.id).order_by(ProgramExercise.position.asc(), ProgramExercise.id.asc()).all()
 
     weeks = list(range(1, prog.duration_weeks + 1))
@@ -633,23 +801,30 @@ def log_program_day(day_id):
     deload_now = is_deload_week(prog, selected_week)
 
     if request.method == "POST":
-        w = Workout(user_id=current_user.id, session_name=day.day_name, program_day_id=day.id, week_number=selected_week)
-        db.session.add(w); db.session.flush()
-        for pe in pes:
-            rep_target, next_weight_suggestion, last_top_weight = compute_session_targets(current_user.id, pe.rep_min, pe.rep_max, pe.exercise, deload_now)
-            sets_this_session = max(1, ceil(pe.target_sets * 0.6)) if deload_now else pe.target_sets
-            for set_no in range(1, sets_this_session+1):
-                reps_val = int(request.form.get(f"reps-{pe.id}-{set_no}", "0") or "0")
-                weight_val = float(request.form.get(f"weight-{pe.id}-{set_no}", "0") or "0")
-                if reps_val > 0 and weight_val > 0:
-                    progressed = mark_progress(rep_target, reps_val, weight_val, last_top_weight)
-                    db.session.add(SetLog(
-                        user_id=current_user.id, workout_id=w.id, exercise_id=pe.exercise_id,
-                        set_number=set_no, reps=reps_val, weight=weight_val,
-                        target_reps=rep_target, progressed=progressed
-                    ))
-        db.session.commit(); flash("Workout saved.")
-        return redirect(url_for("current_program"))
+        try:
+            w = Workout(user_id=current_user.id, session_name=day.day_name, program_day_id=day.id, week_number=selected_week)
+            db.session.add(w)
+            db.session.flush()
+            for pe in pes:
+                rep_target, next_weight_suggestion, last_top_weight = compute_session_targets(current_user.id, pe.rep_min, pe.rep_max, pe.exercise, deload_now)
+                sets_this_session = max(1, ceil(pe.target_sets * 0.6)) if deload_now else pe.target_sets
+                for set_no in range(1, sets_this_session+1):
+                    reps_val = int(request.form.get(f"reps-{pe.id}-{set_no}", "0") or "0")
+                    weight_val = float(request.form.get(f"weight-{pe.id}-{set_no}", "0") or "0")
+                    if reps_val > 0 and weight_val > 0:
+                        progressed = mark_progress(rep_target, reps_val, weight_val, last_top_weight)
+                        db.session.add(SetLog(
+                            user_id=current_user.id, workout_id=w.id, exercise_id=pe.exercise_id,
+                            set_number=set_no, reps=reps_val, weight=weight_val,
+                            target_reps=rep_target, progressed=progressed
+                        ))
+            db.session.commit()
+            flash("Workout saved.")
+            return redirect(url_for("current_program"))
+        except Exception as e:
+            db.session.rollback()
+            flash("Error saving workout.")
+            print(f"Log workout error: {e}")
 
     per_ex = []
     for pe in pes:
@@ -673,43 +848,41 @@ def log_program_day_alias(program_id, day_id):
         args["week_number"] = wk
     return redirect(url_for("log_program_day", day_id=day_id, **args))
 
-# ---------- Startup patch (temporary until migrations are clean) ----------
+# ---------- Startup patch (improved error handling) ----------
 def _ensure_columns():
-    from sqlalchemy import inspect, text
-    insp = inspect(db.engine)
+    """Ensure required columns exist - improved version with better error handling"""
+    try:
+        from sqlalchemy import inspect, text
+        insp = inspect(db.engine)
 
-    def has_col(table, col):
-        return col in [c["name"] for c in insp.get_columns(table)]
+        def has_col(table, col):
+            try:
+                return col in [c["name"] for c in insp.get_columns(table)]
+            except Exception:
+                return False
 
-    if not has_col("exercise","owner_id"):
-        db.session.execute(text("ALTER TABLE exercise ADD COLUMN owner_id INTEGER"))
-        db.session.commit()
+        columns_to_add = [
+            ("exercise", "owner_id", "INTEGER"),
+            ("program", "user_id", "INTEGER"), 
+            ("workout", "user_id", "INTEGER"), 
+            ("set_log", "user_id", "INTEGER"),
+            ("program_exercise", "position", "INTEGER DEFAULT 0"),
+            ("program", "deload_week", "INTEGER"),
+            ("user", "is_email_verified", "BOOLEAN DEFAULT 0")
+        ]
 
-    for table, col in [("program","user_id"), ("workout","user_id"), ("set_log","user_id")]:
-        if has_col(table, col): continue
-        try:
-            db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} INTEGER"))
-            db.session.commit()
-        except Exception:
-            pass
+        for table, col, col_type in columns_to_add:
+            if not has_col(table, col):
+                try:
+                    db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                    db.session.commit()
+                    print(f"Added column {col} to {table}")
+                except Exception as e:
+                    print(f"Could not add column {col} to {table}: {e}")
+                    db.session.rollback()
 
-    if not has_col("program_exercise","position"):
-        db.session.execute(text("ALTER TABLE program_exercise ADD COLUMN position INTEGER DEFAULT 0"))
-        db.session.commit()
-
-    if not has_col("program","deload_week"):
-        try:
-            db.session.execute(text("ALTER TABLE program ADD COLUMN deload_week INTEGER"))
-            db.session.commit()
-        except Exception:
-            pass
-
-    if not has_col("user","is_email_verified"):
-        try:
-            db.session.execute(text("ALTER TABLE user ADD COLUMN is_email_verified BOOLEAN DEFAULT 0"))
-            db.session.commit()
-        except Exception:
-            pass
+    except Exception as e:
+        print(f"Error in _ensure_columns: {e}")
 
 # ---------- bootstrap seeds ----------
 @app.before_request
@@ -717,22 +890,47 @@ def _bootstrap_seed():
     if request.endpoint in ("static",):
         return
     try:
+        # Check if tables exist and create if needed
+        if not db.inspect(db.engine).has_table('muscle_group'):
+            db.create_all()
+            _ensure_columns()
+        
+        # Seed data
         if MuscleGroup.query.count() == 0:
             seed_muscles()
         if Exercise.query.count() == 0:
             seed_exercises()
-    except Exception:
-        with app.app_context():
-            db.create_all()
-            _ensure_columns()
-            seed_muscles()
-            seed_exercises()
+    except Exception as e:
+        print(f"Bootstrap error: {e}")
+        try:
+            with app.app_context():
+                db.create_all()
+                _ensure_columns()
+                seed_muscles()
+                seed_exercises()
+        except Exception as e2:
+            print(f"Failed to bootstrap: {e2}")
+
+# ---------- Error handlers ----------
+@app.errorhandler(404)
+def not_found(error):
+    flash("Page not found.")
+    return redirect(url_for("index"))
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    flash("An error occurred. Please try again.")
+    return redirect(url_for("index"))
 
 # ---------- dev entry ----------
 if __name__ == "__main__":
     with app.app_context():
-        db.create_all()
-        _ensure_columns()
-        seed_muscles()
-        seed_exercises()
+        try:
+            db.create_all()
+            _ensure_columns()
+            seed_muscles()
+            seed_exercises()
+        except Exception as e:
+            print(f"Setup error: {e}")
     app.run(host="0.0.0.0", port=5000, debug=True)

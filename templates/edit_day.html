@@ -10,6 +10,7 @@
 <div class="card">
   <h3>Add Exercise</h3>
   <form method="post" class="grid2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add">
     <div>
       <label>Exercise</label>

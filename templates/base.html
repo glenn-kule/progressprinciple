@@ -1,55 +1,59 @@
+<!-- templates/base.html -->
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8"/>
-    <title>ProgressPrinciple</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <meta name="theme-color" content="#3b82f6"/>
-    <link rel="manifest" href="{{ url_for('static', filename='icons/site.webmanifest') }}?v=4">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
-    <link rel="icon" href="{{ url_for('static', filename='icons/favicon.ico') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('{{ url_for("static", filename="sw.js") }}');
-        });
-      }
-    </script>
-  </head>
-  <body>
-    <header class="topbar">
-      <div class="brand">
-        <img src="{{ url_for('static', filename='icons/android-chrome-192x192.png') }}" alt="" class="brand-icon">
-        <span>ProgressPrinciple</span>
-      </div>
-      <button class="nav-toggle" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
-      <nav class="nav">
-        {% if current_user.is_authenticated %}
-          <a href="{{ url_for('current_program') }}">Current</a>
-          <a href="{{ url_for('create_program') }}">Create</a>
-          <a href="{{ url_for('exercises_bank') }}">Exercises</a>
-          <a href="{{ url_for('programs_history') }}">History</a>
-          <span class="muted hide-sm">| {{ current_user.email }}</span>
-          <a href="{{ url_for('logout') }}">Logout</a>
-        {% else %}
-          <a href="{{ url_for('login') }}">Login</a>
-          <a href="{{ url_for('signup') }}">Sign Up</a>
-        {% endif %}
-      </nav>
-    </header>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hypertrophy</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0 auto; max-width: 900px; padding: 20px; color: #e6e6e6; background:#111; }
+    a { color:#5eb6ff; text-decoration:none; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .gap { gap:10px; }
+    .btn { padding:6px 10px; border:1px solid #444; border-radius:6px; color:#ddd; background:#1b1b1b; }
+    .btn:hover { background:#232323; }
+    .btn-primary { padding:6px 10px; border-radius:6px; color:#fff; background:#2563eb; border:1px solid #1e40af; }
+    .btn-primary:hover { background:#1f4fd1; }
+    .danger { background:#7f1d1d; border-color:#991b1b; }
+    .card { background:#181818; border:1px solid #2a2a2a; border-radius:10px; padding:14px; margin:12px 0; }
+    label { display:block; font-size:13px; margin-bottom:4px; color:#aaa; }
+    input, select { width:100%; padding:8px; border-radius:8px; border:1px solid #3a3a3a; background:#101010; color:#e6e6e6; }
+    h1,h2,h3 { margin:8px 0; }
+    .muted { color:#9aa0a6; }
+    .flash { padding:10px; border-radius:8px; margin:10px 0; border:1px solid #2a2a2a; }
+    .flash.info { background:#0b2a3a; border-color:#174e6b; }
+    .flash.success { background:#0e2f1b; border-color:#1b5e33; }
+    .flash.error { background:#3a0b0b; border-color:#6b1717; }
+  </style>
+</head>
+<body>
 
-    <main class="container">
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <ul class="flash">
-            {% for m in messages %}<li>{{ m }}</li>{% endfor %}
-          </ul>
-        {% endif %}
-      {% endwith %}
-      {% block content %}{% endblock %}
-    </main>
+  <header class="row" style="justify-content:space-between">
+    <h1>Hypertrophy</h1>
+    <nav class="row">
+      {% if current_user.is_authenticated %}
+        <a class="btn" href="{{ url_for('current_program') }}">Current</a>
+        <a class="btn" href="{{ url_for('programs_history') }}">Programs</a>
+        <a class="btn" href="{{ url_for('exercises_bank') }}">Exercises</a>
+        <a class="btn" href="{{ url_for('muscles') }}">Muscles</a>
+        <a class="btn" href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a class="btn" href="{{ url_for('login') }}">Login</a>
+        <a class="btn" href="{{ url_for('signup') }}">Sign up</a>
+      {% endif %}
+    </nav>
+  </header>
 
-    <footer class="footer">© 2025 ProgressPrinciple</footer>
-  </body>
+  <!-- Flash messages (shows dev verification/reset links) -->
+  {% with msgs = get_flashed_messages(with_categories=True) %}
+    {% if msgs %}
+      {% for cat, msg in msgs %}
+        <div class="flash {{cat}}">{{ msg|safe }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</body>
 </html>

@@ -6,6 +6,7 @@
   <h3>Add Muscle</h3>
   <form method="post" class="row gap">
     <input type="hidden" name="action" value="add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input name="name" placeholder="e.g., forearms" required>
     <button class="btn-primary" type="submit">Add</button>
   </form>

@@ -4,6 +4,8 @@
 
 <div class="card">
   <form method="post" id="log-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
     <div class="row gap" style="flex-wrap:wrap">
       <div>
         <label>Week</label>
@@ -13,6 +15,16 @@
           {% endfor %}
         </select>
       </div>
+
+      <div>
+        <label>Micro-load step</label>
+        <select id="micro_step" name="micro_step">
+          <option value="1.25">+/- 1.25</option>
+          <option value="2.5" selected>+/- 2.5</option>
+          <option value="5">+/- 5</option>
+        </select>
+      </div>
+
       {% if deload_now %}
         <div class="row gap" style="align-items:center">
           <span class="btn" style="background:#fffbeb; border-color:#fde68a; color:#92400e;">Deload week: reduced sets</span>
@@ -42,14 +54,22 @@
         {% endif %}
 
         {% for s in range(1, sets_this_session+1) %}
-          <div class="set-row">
+          <div class="set-row" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items:end;">
             <div>
               <label>Reps (Set {{ s }})</label>
-              <input inputmode="numeric" pattern="[0-9]*" name="reps-{{ pe.id }}-{{ s }}" placeholder="{{ rep_target }}">
+              <div class="incwrap">
+                <button type="button" class="dec" data-target="#r_{{ pe.id }}_{{ s }}">−</button>
+                <input id="r_{{ pe.id }}_{{ s }}" inputmode="numeric" pattern="[0-9]*" name="reps-{{ pe.id }}-{{ s }}" step="1" min="0" placeholder="{{ rep_target }}">
+                <button type="button" class="inc" data-target="#r_{{ pe.id }}_{{ s }}">+</button>
+              </div>
             </div>
             <div>
               <label>Weight</label>
-              <input inputmode="decimal" name="weight-{{ pe.id }}-{{ s }}" placeholder="{{ default_weight or '' }}">
+              <div class="incwrap">
+                <button type="button" class="dec" data-target="#w_{{ pe.id }}_{{ s }}">−</button>
+                <input id="w_{{ pe.id }}_{{ s }}" inputmode="decimal" name="weight-{{ pe.id }}-{{ s }}" step="2.5" min="0" placeholder="{{ default_weight or '' }}">
+                <button type="button" class="inc" data-target="#w_{{ pe.id }}_{{ s }}">+</button>
+              </div>
             </div>
             <div>
               <label>&nbsp;</label>
@@ -60,7 +80,6 @@
       </div>
     {% endfor %}
 
-    <!-- Fallback submit in content (for desktop users) -->
     <div class="row gap">
       <button class="btn-primary" type="submit">Save Workout</button>
       <a class="btn" href="{{ url_for('current_program') }}">Cancel</a>
@@ -68,7 +87,6 @@
   </form>
 </div>
 
-<!-- Sticky Save (mobile friendly) -->
 <div class="sticky-save">
   <div class="inner">
     <div class="grow">
@@ -77,4 +95,28 @@
     <button class="btn-primary" form="log-form" type="submit">Save</button>
   </div>
 </div>
+
+<style>
+.incwrap { display:inline-flex; gap:8px; align-items:center; }
+.incwrap input { width: 7rem; text-align:center; }
+.incwrap button { padding: 4px 10px; }
+</style>
+
+<script>
+document.addEventListener("click", function(e){
+  if (!e.target.matches(".inc, .dec")) return;
+  const sel = e.target.getAttribute("data-target");
+  const input = document.querySelector(sel);
+  if (!input) return;
+  const isInc = e.target.classList.contains("inc");
+  const defaultStep = parseFloat(input.getAttribute("step") || "1");
+  const microSel = document.querySelector("#micro_step");
+  const isWeight = input.id.startsWith("w_");
+  const step = isWeight && microSel ? parseFloat(microSel.value) : defaultStep;
+  const cur = parseFloat(input.value || input.placeholder || "0");
+  const min = parseFloat(input.getAttribute("min") || "0");
+  const next = isInc ? cur + step : cur - step;
+  input.value = Math.max(next, min).toFixed(step % 1 === 0 ? 0 : 2);
+});
+</script>
 {% endblock %}

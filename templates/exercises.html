@@ -5,6 +5,7 @@
 <div class="card">
   <h3>Add Exercise</h3>
   <form method="post" class="grid2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
       <label>Name</label>
       <input name="name" placeholder="e.g., Smith Bench Press" required>

@@ -4,6 +4,7 @@
 
 <div class="card">
   <form method="post" class="grid2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
       <label>Program name</label>
       <input name="name" value="My Program">
