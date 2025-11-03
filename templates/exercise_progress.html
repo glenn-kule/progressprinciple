@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="margin-bottom: 20px;">
+  <a href="{{ url_for('workout_history') }}" class="btn">← Back to History</a>
+</div>
+
+<h2>{{ exercise.name }} Progress</h2>
+<p style="color: #666;">Muscle: {{ exercise.muscle_group.title() }}</p>
+
+<div class="card" style="margin: 20px 0;">
+  <h3>Progress Chart</h3>
+  <canvas id="progressChart" width="400" height="200"></canvas>
+</div>
+
+<h3>Workout History</h3>
+{% for workout in progress_data %}
+<div class="card" style="margin-bottom: 15px;">
+  <h4>{{ workout.date.strftime('%a, %b %d, %Y') }} — {{ workout.session_name }}</h4>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0;">
+    <div><strong>Max Weight:</strong> {{ workout.max_weight }} lbs</div>
+    <div><strong>Total Reps:</strong> {{ workout.total_reps }}</div>
+    <div><strong>Total Volume:</strong> {{ workout.total_volume|round(1) }} lbs</div>
+    <div><strong>Avg Reps:</strong> {{ workout.avg_reps }}</div>
+  </div>
+  
+  <table style="width: 100%; margin-top: 10px;">
+    <thead>
+      <tr style="border-bottom: 2px solid #ddd;">
+        <th style="padding: 8px;">Set</th>
+        <th style="padding: 8px;">Reps</th>
+        <th style="padding: 8px;">Weight</th>
+        <th style="padding: 8px;">Volume</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in workout.sets %}
+      <tr style="border-bottom: 1px solid #eee;">
+        <td style="padding: 8px;">{{ s.set_number }}</td>
+        <td style="padding: 8px;">{{ s.reps }}</td>
+        <td style="padding: 8px;">{{ s.weight }} lbs</td>
+        <td style="padding: 8px;">{{ (s.reps * s.weight)|round(1) }} lbs</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script type="application/json" id="chartData">{{ chart_data|safe }}</script>
+<script>
+const chartDataElement = document.getElementById('chartData');
+const chartData = JSON.parse(chartDataElement.textContent);
+const ctx = document.getElementById('progressChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: chartData.dates,
+    datasets: [{
+      label: 'Max Weight (lbs)',
+      data: chartData.max_weights,
+      borderColor: 'rgb(75, 192, 192)',
+      tension: 0.1
+    }]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
+  }
+});
+</script>
+{% endblock %}
