@@ -60,20 +60,19 @@
 </div>
 
 <script>
-// Volume recommendation logic
-const volumeData = {
-  chest: { mev: 12, mrv: 22 },
-  back: { mev: 14, mrv: 25 },
-  legs: { mev: 10, mrv: 20 },
-  shoulders: { mev: 12, mrv: 20 },
-  biceps: { mev: 14, mrv: 26 },
-  triceps: { mev: 14, mrv: 28 }
+// Correct volume recommendations based on RIR and frequency
+const volumeByRirFreq = {
+  0: { 1: 9, 2: 5, 3: 3.5 },   // RIR 0: averages of ranges
+  1: { 1: 11, 2: 6, 3: 4.5 },  // RIR 1
+  2: { 1: 13, 2: 7, 3: 5 },    // RIR 2
+  3: { 1: 14, 2: 7.5, 3: 5.5 },  // RIR 3 (extrapolated)
+  4: { 1: 15, 2: 8, 3: 6 }     // RIR 4 (extrapolated)
 };
 
 const splitFrequency = {
   PPL: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 },
   UL: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 },
-  FB: { chest: 1, back: 1, legs: 1, shoulders: 1, biceps: 1, triceps: 1 }
+  FB: { chest: 3, back: 3, legs: 3, shoulders: 3, biceps: 3, triceps: 3 }
 };
 
 function updateRecommendations() {
@@ -81,40 +80,42 @@ function updateRecommendations() {
   const days = parseInt(document.getElementById('days-input').value);
   const rir = parseInt(document.getElementById('rir-select').value);
   
-  // RIR adjustment multiplier
-  const rirMult = {0: 0.85, 1: 0.90, 2: 1.0, 3: 1.05, 4: 1.10}[rir] || 1.0;
-  
   const container = document.getElementById('recommendations-content');
   container.innerHTML = '';
   
-  // Calculate frequency based on split and days
+  // Calculate frequency based on split type
   let freqMap = {...splitFrequency[split]};
-  if (split === 'FB') {
-    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(days, 6));
-  } else if (split === 'PPL') {
-    const sessions = Math.floor(days / 3);
-    Object.keys(freqMap).forEach(k => freqMap[k] = sessions);
+  
+  // Adjust frequency based on days per week
+  if (split === 'PPL') {
+    const cycles = Math.floor(days / 3);
+    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(cycles, 3));
   } else if (split === 'UL') {
-    const sessions = Math.floor(days / 2);
-    Object.keys(freqMap).forEach(k => freqMap[k] = sessions);
+    const cycles = Math.floor(days / 2);
+    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(cycles, 3));
+  } else if (split === 'FB') {
+    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(days, 3));
   }
   
-  Object.keys(volumeData).forEach(muscle => {
-    const data = volumeData[muscle];
+  // Get muscles to display
+  const muscles = ['chest', 'back', 'legs', 'shoulders', 'biceps', 'triceps'];
+  
+  muscles.forEach(muscle => {
     const freq = freqMap[muscle] || 2;
-    const adjustedMRV = Math.round(data.mrv * rirMult);
-    const optimal = Math.round(data.mev + (adjustedMRV - data.mev) * 0.7);
-    const perSession = Math.max(3, Math.round(optimal / freq));
+    const clampedFreq = Math.min(freq, 3); // Max 3x for lookup
+    
+    // Get sets per session from lookup table
+    const setsPerSession = Math.round(volumeByRirFreq[rir][clampedFreq]);
+    const weeklyTotal = setsPerSession * freq;
     
     const card = document.createElement('div');
-    card.style.cssText = 'background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155;';
+    card.style.cssText = 'background: #0f172a; padding: 14px; border-radius: 10px; border: 1px solid #334155;';
     card.innerHTML = `
-      <div style="font-weight: 600; color: #60a5fa; margin-bottom: 6px;">${muscle.toUpperCase()}</div>
-      <div style="font-size: 13px; color: #94a3b8;">
-        <div>Frequency: ${freq}x/week</div>
-        <div style="color: #22c55e; font-weight: 600; margin-top: 4px;">${perSession} sets/session</div>
-        <div style="margin-top: 4px;">Weekly: ${optimal} sets</div>
-        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">MEV: ${data.mev} | MRV: ${adjustedMRV}</div>
+      <div style="font-weight: 700; color: #60a5fa; margin-bottom: 8px; font-size: 15px;">${muscle.toUpperCase()}</div>
+      <div style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+        <div style="color: #94a3b8;">Frequency: <strong style="color: #e2e8f0;">${freq}×/week</strong></div>
+        <div style="color: #22c55e; font-weight: 700; font-size: 18px; margin: 6px 0;">${setsPerSession} sets/session</div>
+        <div style="color: #94a3b8;">Weekly Total: <strong style="color: #e2e8f0;">${weeklyTotal} sets</strong></div>
       </div>
     `;
     container.appendChild(card);
