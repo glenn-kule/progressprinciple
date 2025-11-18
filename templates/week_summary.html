@@ -1,39 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>{{ program.name }} — Week {{ week }} Summary</h2>
-
-<div class="card">
-  <p>
-    Weeks:
-    {% for w in weeks %}
-      <a class="chip {% if w == week %}chip-active{% endif %}" href="{{ url_for('view_program_week', program_id=program.id, week=w) }}">{{ w }}</a>
-    {% endfor %}
-    <a class="btn" href="{{ url_for('current_program') }}">Back</a>
-  </p>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <a href="{{ url_for('week_summary', offset=week_offset-1) }}" class="btn">← Previous Week</a>
+  <h2>{{ week_start.strftime('%b %d') }} - {{ week_end.strftime('%b %d, %Y') }}</h2>
+  <a href="{{ url_for('week_summary', offset=week_offset+1) }}" class="btn">Next Week →</a>
 </div>
 
-{% for d, ex_items in days_summary %}
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
   <div class="card">
-    <h3>{{ d.day_name }}</h3>
-    {% if ex_items %}
-      <ul class="bullets">
-        {% for ex, sets in ex_items %}
-          <li>
-            <strong>{{ ex.name }}</strong>
-            <ul class="bullets">
-              {% for s in sets %}
-                <li>Set {{ s.set_number }}: {{ s.reps }} reps @ {{ s.weight }}
-                  {% if s.target_reps %} (target {{ s.target_reps }}){% endif %}
-                  {% if s.progressed is not none %} — {% if s.progressed %}<span class="good">progress</span>{% else %}<span class="bad">no progress</span>{% endif %}{% endif %}
-                </li>
-              {% endfor %}
-            </ul>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p class="muted">No logs yet for this day/week.</p>
-    {% endif %}
+    <h3>{{ workouts|length }}</h3>
+    <p class="muted">Workouts</p>
   </div>
+  <div class="card">
+    <h3>{{ total_sets }}</h3>
+    <p class="muted">Total Sets</p>
+  </div>
+  <div class="card">
+    <h3>{{ total_volume }}</h3>
+    <p class="muted">Total Volume (lbs)</p>
+  </div>
+</div>
+
+<h3>Workouts This Week</h3>
+{% for detail in workouts %}
+<div class="card">
+  <h4>{{ detail.workout.date.strftime('%a, %b %d') }} — {{ detail.workout.session_name }}</h4>
+  <p><strong>Sets:</strong> {{ detail.set_count }} | <strong>Volume:</strong> {{ detail.volume|round(1) }} lbs</p>
+</div>
+{% else %}
+<div class="card">
+  <p class="muted">No workouts this week</p>
+</div>
 {% endfor %}
+
+{% if muscle_volume %}
+<h3>Volume by Muscle Group</h3>
+<div class="card">
+  {% for muscle, sets, volume in muscle_volume %}
+  <p><strong>{{ muscle.title() }}:</strong> {{ sets }} sets, {{ volume|round(1) }} lbs</p>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

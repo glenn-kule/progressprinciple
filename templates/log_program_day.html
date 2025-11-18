@@ -3,27 +3,39 @@
 <h2>Log: {{ day.day_name }} — {{ program.name }}</h2>
 
 <div class="card">
-  <form method="post" id="log-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
+  <!-- Week selector - separate from main form -->
+  <form method="get" style="margin-bottom: 20px;">
     <div class="row gap" style="flex-wrap:wrap">
       <div>
         <label>Week</label>
-        <select name="week_number" onchange="document.getElementById('log-form').submit()">
+        <select name="week_number" onchange="this.form.submit()">
           {% for w in weeks %}
             <option value="{{ w }}" {% if w==selected_week %}selected{% endif %}>Week {{ w }}</option>
           {% endfor %}
         </select>
       </div>
+      
+      {% if deload_now %}
+        <div class="row gap" style="align-items:center">
+          <span class="btn" style="background:#fffbeb; border-color:#fde68a; color:#92400e;">Deload week: reduced sets</span>
+        </div>
+      {% endif %}
+    </div>
+  </form>
 
-      <div>
-        <label>Micro-load step</label>
-        <select id="micro_step" name="micro_step">
-          <option value="1.25">+/- 1.25</option>
-          <option value="2.5" selected>+/- 2.5</option>
-          <option value="5">+/- 5</option>
-        </select>
-      </div>
+  <!-- Main workout logging form -->
+  <form method="post" id="log-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="week_number" value="{{ selected_week }}">
+
+    <div style="margin-bottom: 15px;">
+      <label>Micro-load step</label>
+      <select id="micro_step" name="micro_step">
+        <option value="1.25">+/- 1.25</option>
+        <option value="2.5" selected>+/- 2.5</option>
+        <option value="5">+/- 5</option>
+      </select>
+    </div>
 
       {% if deload_now %}
         <div class="row gap" style="align-items:center">

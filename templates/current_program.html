@@ -2,6 +2,14 @@
 {% block content %}
 <h2>Current Program — {{ program.name }}</h2>
 
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <h2>{{ program.name }}</h2>
+  <form method="post" action="{{ url_for('archive_program', program_id=program.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn danger">Archive & Create New</button>
+  </form>
+</div>
+
 <!-- Deload controls -->
 <div class="card">
   <form method="post" action="/program/{{ program.id }}/deload" class="row gap" style="flex-wrap:wrap;">
