@@ -990,43 +990,14 @@ def exercise_progress(exercise_id):
 @app.route("/analytics")
 @login_required
 def analytics_dashboard():
-    """Analytics dashboard with volume tracking and insights"""
+    """Analytics dashboard with volume tracking"""
     from sqlalchemy import func
     from datetime import timedelta
     
-    # Get date range (last 8 weeks)
     end_date = date.today()
     start_date = end_date - timedelta(weeks=8)
     
-    # Weekly volume by muscle group
-    weekly_volume = (
-        db.session.query(
-            func.date_trunc('week', Workout.date).label('week'),
-            Exercise.muscle_group,
-            func.count(SetLog.id).label('set_count'),
-            func.sum(SetLog.reps * SetLog.weight).label('volume')
-        )
-        .join(SetLog, SetLog.workout_id == Workout.id)
-        .join(Exercise, Exercise.id == SetLog.exercise_id)
-        .filter(
-            SetLog.user_id == current_user.id,
-            Workout.date >= start_date
-        )
-        .group_by(func.date_trunc('week', Workout.date), Exercise.muscle_group)
-        .order_by(func.date_trunc('week', Workout.date))
-        .all()
-    )
-    
-    # Group by muscle for chart
-    muscle_groups = get_muscle_names()
-    weekly_data = {}
-    for week, muscle, sets, volume in weekly_volume:
-        week_str = week.strftime('%Y-%m-%d') if hasattr(week, 'strftime') else str(week)
-        if week_str not in weekly_data:
-            weekly_data[week_str] = {mg: 0 for mg in muscle_groups}
-        weekly_data[week_str][muscle] = sets
-    
-    # Personal records (top weight for each exercise)
+    # Personal records - simplified query
     personal_records = (
         db.session.query(
             Exercise.name,
@@ -1042,15 +1013,12 @@ def analytics_dashboard():
         .all()
     )
     
-    # Workout frequency
     workout_count = Workout.query.filter_by(user_id=current_user.id).count()
     days_training = (end_date - start_date).days
     avg_workouts_per_week = (workout_count / days_training * 7) if days_training > 0 else 0
     
     return render_template(
         "analytics.html",
-        weekly_data=weekly_data,
-        muscle_groups=muscle_groups,
         personal_records=personal_records,
         total_workouts=workout_count,
         avg_workouts_per_week=round(avg_workouts_per_week, 1)

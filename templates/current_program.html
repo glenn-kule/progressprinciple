@@ -1,79 +1,67 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Current Program — {{ program.name }}</h2>
-
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
   <h2>{{ program.name }}</h2>
-  <form method="post" action="{{ url_for('archive_program', program_id=program.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn danger">Archive & Create New</button>
-  </form>
+  <a href="{{ url_for('create_program') }}" class="btn-primary">New Program</a>
 </div>
 
-<!-- Deload controls -->
 <div class="card">
-  <form method="post" action="/program/{{ program.id }}/deload" class="row gap" style="flex-wrap:wrap;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Deload week</label>
-    <select name="deload_week">
-      {% for w in weeks %}
-        <option value="{{ w }}" {% if program.deload_week == w %}selected{% endif %}>Week {{ w }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn" type="submit" name="action" value="set">Set deload</button>
-    {% if program.deload_week %}
-      <button class="btn danger" type="submit" name="action" value="clear">Clear deload</button>
-    {% endif %}
-  </form>
-  {% if program.deload_week %}
-    <div class="muted" style="margin-top:6px;font-size:13px;">
-      Deload is scheduled for <strong>Week {{ program.deload_week }}</strong>.
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px;">
+    <div><strong>Week:</strong> {{ current_week }}/{{ program.duration_weeks }}</div>
+    <div><strong>Days/Week:</strong> {{ program.days_per_week }}</div>
+    <div><strong>Target RIR:</strong> {{ program.target_rir }}</div>
+  </div>
+</div>
+
+{% for day, pes in day_blocks %}
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+    <h3>{{ day.day_name }}</h3>
+    <div style="display: flex; gap: 8px;">
+      <a href="{{ url_for('log_program_day', day_id=day.id) }}" class="btn-primary">Log Workout</a>
+      {% if not program.locked %}
+      <a href="{{ url_for('edit_program_day', program_id=program.id, day_id=day.id) }}" class="btn">Edit</a>
+      {% endif %}
     </div>
+  </div>
+  
+  {% if pes %}
+  <table style="width: 100%;">
+    <thead>
+      <tr>
+        <th style="text-align: left;">Exercise</th>
+        <th>Sets</th>
+        <th>Reps</th>
+        <th>RIR</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pe in pes %}
+      <tr>
+        <td>{{ pe.exercise.name }}</td>
+        <td style="text-align: center;">{{ pe.target_sets }}</td>
+        <td style="text-align: center;">{{ pe.rep_min }}-{{ pe.rep_max }}</td>
+        <td style="text-align: center;">{{ pe.rir }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No exercises yet</p>
   {% endif %}
 </div>
+{% endfor %}
 
-<!-- Week selector -->
-<div class="card">
-  <form method="get" class="row gap" style="flex-wrap:wrap;">
-    <label>Week</label>
-    <select name="week" onchange="this.form.submit()">
-      {% for w in weeks %}
-        <option value="{{ w }}" {% if w == current_week %}selected{% endif %}>Week {{ w }}</option>
-      {% endfor %}
-    </select>
-    <noscript><button class="btn" type="submit">Go</button></noscript>
+{% if not program.locked %}
+<div style="margin: 20px 0;">
+  <form method="post" action="{{ url_for('start_program', program_id=program.id, day_id=day_blocks[0][0].id if day_blocks else 0) }}" style="display: inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn-primary">Start Program</button>
+  </form>
+  <form method="post" action="{{ url_for('archive_program', program_id=program.id) }}" style="display: inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn danger">Archive & Start New</button>
   </form>
 </div>
-
-{% for day, exercises in day_blocks %}
-  <div class="card">
-    <div class="row" style="justify-content:space-between; align-items:center;">
-      <h3>{{ day.day_name }}</h3>
-      <div class="row gap">
-        <a class="btn" href="/program/{{ program.id }}/day/{{ day.id }}/edit">Edit Day</a>
-
-        <form method="post" action="/program/{{ program.id }}/day/{{ day.id }}/remove" style="display:inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn danger" type="submit">Remove Day</button>
-        </form>
-
-        <a class="btn" href="/program/{{ program.id }}/day/{{ day.id }}/log?week={{ current_week }}">
-          Log (Week {{ current_week }})
-        </a>
-      </div>
-    </div>
-
-    {% if exercises %}
-      <ul style="margin:6px 0 0 20px;">
-        {% for pe in exercises %}
-          <li>
-            {{ pe.exercise.name }} — {{ pe.target_sets }} sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <div class="muted" style="margin-top:6px;">No exercises added yet.</div>
-    {% endif %}
-  </div>
-{% endfor %}
+{% endif %}
 {% endblock %}
