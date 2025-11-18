@@ -1,20 +1,131 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>History</h2>
-<ul>
-  {% for workout, sets in history_data %}
-    <li>
-      <strong>{{ workout.date }} — {{ workout.session_name }}</strong>
-      <ul>
-        {% for s in sets %}
-          <li>Set {{ s.set_number }}: {{ s.reps }} reps × {{ s.weight }} ({{ s.exercise.name }})</li>
-        {% else %}
-          <li>No sets logged.</li>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+  <h2>Workout History</h2>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <a href="{{ url_for('week_summary') }}" class="btn">Week Summary</a>
+    <a href="{{ url_for('analytics_dashboard') }}" class="btn">Analytics</a>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="card" style="margin-bottom: 20px;">
+  <h3>Summary</h3>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+    <div>
+      <strong>Total Workouts:</strong> {{ total_workouts }}
+    </div>
+    <div>
+      <strong>Total Sets:</strong> {{ total_sets }}
+    </div>
+  </div>
+  
+  {% if volume_stats %}
+  <h4 style="margin-top: 15px;">Last 7 Days - Sets by Muscle</h4>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+    {% for muscle, set_count, volume in volume_stats %}
+    <div style="padding: 8px; background: #2a2a2a; border-radius: 4px;">
+      <strong>{{ muscle.title() }}:</strong> {{ set_count }} sets
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Filters -->
+<div class="card" style="margin-bottom: 20px;">
+  <form method="get" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: end;">
+    <div style="flex: 1; min-width: 200px;">
+      <label>Filter by Exercise</label>
+      <select name="exercise_id" onchange="this.form.submit()">
+        <option value="">All Exercises</option>
+        {% for ex in exercises %}
+        <option value="{{ ex.id }}" {% if ex.id == selected_exercise_id %}selected{% endif %}>
+          {{ ex.name }} ({{ ex.muscle_group }})
+        </option>
         {% endfor %}
-      </ul>
-    </li>
-  {% else %}
-    <li>No workouts yet.</li>
+      </select>
+    </div>
+    <div>
+      <label>Time Period</label>
+      <select name="days" onchange="this.form.submit()">
+        <option value="7" {% if days_filter == 7 %}selected{% endif %}>Last 7 days</option>
+        <option value="30" {% if days_filter == 30 %}selected{% endif %}>Last 30 days</option>
+        <option value="90" {% if days_filter == 90 %}selected{% endif %}>Last 90 days</option>
+        <option value="0" {% if days_filter == 0 %}selected{% endif %}>All time</option>
+      </select>
+    </div>
+    {% if selected_exercise_id %}
+    <div>
+      <a href="{{ url_for('exercise_progress', exercise_id=selected_exercise_id) }}" class="btn-primary">
+        View Progress Chart
+      </a>
+    </div>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Workout List -->
+{% if history_data %}
+  {% for workout, sets in history_data %}
+  <div class="card" style="margin-bottom: 15px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+      <h3 style="margin: 0;">
+        {{ workout.date.strftime('%a, %b %d, %Y') }} — {{ workout.session_name }}
+      </h3>
+      {% if workout.week_number %}
+      <span style="color: #9aa0a6; font-size: 14px;">Week {{ workout.week_number }}</span>
+      {% endif %}
+    </div>
+    
+    {% if sets %}
+    <div class="table-container">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 2px solid #3a3a3a;">
+            <th style="text-align: left; padding: 8px;">Exercise</th>
+            <th style="text-align: center; padding: 8px;">Set</th>
+            <th style="text-align: center; padding: 8px;">Reps</th>
+            <th style="text-align: center; padding: 8px;">Weight</th>
+            <th style="text-align: center; padding: 8px;">Volume</th>
+            {% if sets[0].progressed is not none %}
+            <th style="text-align: center; padding: 8px;">✓</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sets %}
+          <tr style="border-bottom: 1px solid #2a2a2a;">
+            <td style="padding: 8px;">{{ s.exercise.name }}</td>
+            <td style="text-align: center; padding: 8px;">{{ s.set_number }}</td>
+            <td style="text-align: center; padding: 8px;">{{ s.reps }}</td>
+            <td style="text-align: center; padding: 8px;">{{ s.weight }} lbs</td>
+            <td style="text-align: center; padding: 8px;">{{ (s.reps * s.weight)|round(1) }}</td>
+            {% if s.progressed is not none %}
+            <td style="text-align: center; padding: 8px;">
+              {% if s.progressed %}
+              <span style="color: #4CAF50;">✓</span>
+              {% else %}
+              <span style="color: #ff9800;">→</span>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p style="color: #9aa0a6; font-style: italic;">No sets logged for this workout.</p>
+    {% endif %}
+  </div>
   {% endfor %}
-</ul>
+{% else %}
+  <div class="card">
+    <p style="text-align: center; color: #9aa0a6; padding: 40px 0;">
+      No workouts found. Start logging your training!
+    </p>
+  </div>
+{% endif %}
+
 {% endblock %}

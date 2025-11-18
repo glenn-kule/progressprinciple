@@ -848,6 +848,289 @@ def log_program_day_alias(program_id, day_id):
         args["week_number"] = wk
     return redirect(url_for("log_program_day", day_id=day_id, **args))
 
+
+
+# Add these routes to your app.py file, after the logging section and before the startup patch
+
+# ---------- WORKOUT HISTORY & ANALYTICS ----------
+
+@app.route("/history")
+@login_required
+def workout_history():
+    """View all past workouts with filtering and analytics"""
+    from sqlalchemy import func, desc
+    
+    # Get filter parameters
+    exercise_id = request.args.get("exercise_id", type=int)
+    days = request.args.get("days", default=30, type=int)  # Last N days
+    
+    # Base query for workouts
+    workouts_query = (
+        Workout.query
+        .filter_by(user_id=current_user.id)
+        .order_by(desc(Workout.date))
+    )
+    
+    # Apply date filter
+    if days > 0:
+        cutoff_date = date.today() - __import__('datetime').timedelta(days=days)
+        workouts_query = workouts_query.filter(Workout.date >= cutoff_date)
+    
+    workouts = workouts_query.limit(50).all()
+    
+    # Get sets for each workout
+    history_data = []
+    for w in workouts:
+        sets_query = SetLog.query.filter_by(user_id=current_user.id, workout_id=w.id)
+        if exercise_id:
+            sets_query = sets_query.filter_by(exercise_id=exercise_id)
+        sets = sets_query.order_by(SetLog.set_number).all()
+        if sets or not exercise_id:  # Include workout if it has sets or no filter
+            history_data.append((w, sets))
+    
+    # Get exercise list for filter dropdown
+    exercises = Exercise.query.filter(
+        (Exercise.owner_id == None) | (Exercise.owner_id == current_user.id)  # noqa: E711
+    ).order_by(Exercise.name).all()
+    
+    # Calculate summary stats
+    total_workouts = Workout.query.filter_by(user_id=current_user.id).count()
+    total_sets = SetLog.query.filter_by(user_id=current_user.id).count()
+    
+    # Volume by muscle group (last 7 days)
+    week_ago = date.today() - __import__('datetime').timedelta(days=7)
+    volume_stats = (
+        db.session.query(
+            Exercise.muscle_group,
+            func.count(SetLog.id).label('set_count'),
+            func.sum(SetLog.reps * SetLog.weight).label('total_volume')
+        )
+        .join(SetLog, SetLog.exercise_id == Exercise.id)
+        .join(Workout, Workout.id == SetLog.workout_id)
+        .filter(SetLog.user_id == current_user.id, Workout.date >= week_ago)
+        .group_by(Exercise.muscle_group)
+        .all()
+    )
+    
+    return render_template(
+        "history.html",
+        history_data=history_data,
+        exercises=exercises,
+        selected_exercise_id=exercise_id,
+        days_filter=days,
+        total_workouts=total_workouts,
+        total_sets=total_sets,
+        volume_stats=volume_stats
+    )
+
+
+@app.route("/exercise/<int:exercise_id>/progress")
+@login_required
+def exercise_progress(exercise_id):
+    """Detailed progress view for a specific exercise"""
+    from sqlalchemy import desc
+    
+    exercise = Exercise.query.get_or_404(exercise_id)
+    
+    # Get all workouts with this exercise
+    workout_data = (
+        db.session.query(Workout.date, Workout.id, Workout.session_name)
+        .join(SetLog, SetLog.workout_id == Workout.id)
+        .filter(
+            SetLog.user_id == current_user.id,
+            SetLog.exercise_id == exercise_id
+        )
+        .distinct()
+        .order_by(desc(Workout.date))
+        .limit(20)
+        .all()
+    )
+    
+    # Get sets for each workout
+    progress_data = []
+    for workout_date, workout_id, session_name in workout_data:
+        sets = (
+            SetLog.query
+            .filter_by(user_id=current_user.id, workout_id=workout_id, exercise_id=exercise_id)
+            .order_by(SetLog.set_number)
+            .all()
+        )
+        
+        # Calculate workout stats
+        max_weight = max(s.weight for s in sets) if sets else 0
+        total_reps = sum(s.reps for s in sets)
+        total_volume = sum(s.reps * s.weight for s in sets)
+        avg_reps = total_reps / len(sets) if sets else 0
+        
+        progress_data.append({
+            'date': workout_date,
+            'session_name': session_name,
+            'sets': sets,
+            'max_weight': max_weight,
+            'total_reps': total_reps,
+            'total_volume': total_volume,
+            'avg_reps': round(avg_reps, 1)
+        })
+    
+    # Prepare chart data (JSON for frontend)
+    chart_data = {
+        'dates': [p['date'].strftime('%Y-%m-%d') for p in reversed(progress_data)],
+        'max_weights': [p['max_weight'] for p in reversed(progress_data)],
+        'volumes': [p['total_volume'] for p in reversed(progress_data)]
+    }
+    
+    return render_template(
+        "exercise_progress.html",
+        exercise=exercise,
+        progress_data=progress_data,
+        chart_data=chart_data
+    )
+
+
+@app.route("/analytics")
+@login_required
+def analytics_dashboard():
+    """Analytics dashboard with volume tracking and insights"""
+    from sqlalchemy import func
+    from datetime import timedelta
+    
+    # Get date range (last 8 weeks)
+    end_date = date.today()
+    start_date = end_date - timedelta(weeks=8)
+    
+    # Weekly volume by muscle group
+    weekly_volume = (
+        db.session.query(
+            func.date_trunc('week', Workout.date).label('week'),
+            Exercise.muscle_group,
+            func.count(SetLog.id).label('set_count'),
+            func.sum(SetLog.reps * SetLog.weight).label('volume')
+        )
+        .join(SetLog, SetLog.workout_id == Workout.id)
+        .join(Exercise, Exercise.id == SetLog.exercise_id)
+        .filter(
+            SetLog.user_id == current_user.id,
+            Workout.date >= start_date
+        )
+        .group_by(func.date_trunc('week', Workout.date), Exercise.muscle_group)
+        .order_by(func.date_trunc('week', Workout.date))
+        .all()
+    )
+    
+    # Group by muscle for chart
+    muscle_groups = get_muscle_names()
+    weekly_data = {}
+    for week, muscle, sets, volume in weekly_volume:
+        week_str = week.strftime('%Y-%m-%d') if hasattr(week, 'strftime') else str(week)
+        if week_str not in weekly_data:
+            weekly_data[week_str] = {mg: 0 for mg in muscle_groups}
+        weekly_data[week_str][muscle] = sets
+    
+    # Personal records (top weight for each exercise)
+    personal_records = (
+        db.session.query(
+            Exercise.name,
+            Exercise.muscle_group,
+            func.max(SetLog.weight).label('max_weight'),
+            func.max(Workout.date).label('date_achieved')
+        )
+        .join(SetLog, SetLog.exercise_id == Exercise.id)
+        .join(Workout, Workout.id == SetLog.workout_id)
+        .filter(SetLog.user_id == current_user.id)
+        .group_by(Exercise.name, Exercise.muscle_group)
+        .order_by(Exercise.muscle_group, Exercise.name)
+        .all()
+    )
+    
+    # Workout frequency
+    workout_count = Workout.query.filter_by(user_id=current_user.id).count()
+    days_training = (end_date - start_date).days
+    avg_workouts_per_week = (workout_count / days_training * 7) if days_training > 0 else 0
+    
+    return render_template(
+        "analytics.html",
+        weekly_data=weekly_data,
+        muscle_groups=muscle_groups,
+        personal_records=personal_records,
+        total_workouts=workout_count,
+        avg_workouts_per_week=round(avg_workouts_per_week, 1)
+    )
+
+
+@app.route("/week-summary")
+@login_required
+def week_summary():
+    """Weekly training summary"""
+    from datetime import timedelta
+    from sqlalchemy import func
+    
+    # Get current week (Monday to Sunday)
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    # Allow navigation to other weeks
+    week_offset = request.args.get("offset", default=0, type=int)
+    week_start = week_start + timedelta(weeks=week_offset)
+    week_end = week_start + timedelta(days=6)
+    
+    # Get workouts this week
+    workouts = (
+        Workout.query
+        .filter(
+            Workout.user_id == current_user.id,
+            Workout.date >= week_start,
+            Workout.date <= week_end
+        )
+        .order_by(Workout.date)
+        .all()
+    )
+    
+    # Calculate stats
+    workout_details = []
+    total_sets = 0
+    total_volume = 0
+    
+    for w in workouts:
+        sets = SetLog.query.filter_by(workout_id=w.id).all()
+        workout_volume = sum(s.reps * s.weight for s in sets)
+        workout_details.append({
+            'workout': w,
+            'set_count': len(sets),
+            'volume': workout_volume
+        })
+        total_sets += len(sets)
+        total_volume += workout_volume
+    
+    # Volume by muscle group this week
+    muscle_volume = (
+        db.session.query(
+            Exercise.muscle_group,
+            func.count(SetLog.id).label('sets'),
+            func.sum(SetLog.reps * SetLog.weight).label('volume')
+        )
+        .join(SetLog, SetLog.exercise_id == Exercise.id)
+        .join(Workout, Workout.id == SetLog.workout_id)
+        .filter(
+            SetLog.user_id == current_user.id,
+            Workout.date >= week_start,
+            Workout.date <= week_end
+        )
+        .group_by(Exercise.muscle_group)
+        .all()
+    )
+    
+    return render_template(
+        "week_summary.html",
+        week_start=week_start,
+        week_end=week_end,
+        week_offset=week_offset,
+        workouts=workout_details,
+        total_sets=total_sets,
+        total_volume=round(total_volume, 1),
+        muscle_volume=muscle_volume
+    )
+
 # ---------- Startup patch (improved error handling) ----------
 def _ensure_columns():
     """Ensure required columns exist - improved version with better error handling"""
