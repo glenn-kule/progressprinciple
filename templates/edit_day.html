@@ -1,100 +1,74 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Edit Day: {{ day.day_name }} — {{ program.name }}</h2>
+<h2>Edit: {{ day.day_name }}</h2>
+<p class="muted">{{ program.name }}</p>
 
-{% if not allow_edit_exercises %}
-  <div class="card"><p class="muted">Program started. You can still change <strong>sets</strong> below, but adding/removing exercises is locked.</p></div>
-{% endif %}
-
-{% if allow_edit_exercises %}
 <div class="card">
+  {% if allow_edit_exercises %}
   <h3>Add Exercise</h3>
-  <form method="post" class="grid2">
+  <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add">
-    <div>
-      <label>Exercise</label>
-      <select name="exercise_id">
-        {% for ex in bank %}
-          <option value="{{ ex.id }}">{{ ex.muscle_group }} — {{ ex.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label>Target sets</label>
-      <input name="target_sets" type="number" min="1" value="3">
-    </div>
-    <div>
-      <label>Rep range (min → max)</label>
-      <div class="row gap">
-        <input name="rep_min" type="number" min="1" value="8" class="w80">
-        <span class="muted">to</span>
-        <input name="rep_max" type="number" min="1" value="10" class="w80">
+    
+    <label>Exercise</label>
+    <select name="exercise_id" required>
+      <option value="">Select exercise...</option>
+      {% for ex in bank %}
+        <option value="{{ ex.id }}">{{ ex.name }} ({{ ex.muscle_group }})</option>
+      {% endfor %}
+    </select>
+    
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+      <div>
+        <label>Sets</label>
+        <input type="number" name="target_sets" value="3" min="1" required>
+      </div>
+      <div>
+        <label>Rep Min</label>
+        <input type="number" name="rep_min" value="8" min="1" required>
+      </div>
+      <div>
+        <label>Rep Max</label>
+        <input type="number" name="rep_max" value="10" min="1" required>
       </div>
     </div>
-    <div>
-      <label>RIR</label>
-      <select name="rir">
-        <option {% if program.target_rir==0 %}selected{% endif %}>0</option>
-        <option {% if program.target_rir==1 %}selected{% endif %}>1</option>
-        <option {% if program.target_rir==2 %}selected{% endif %}>2</option>
-        <option {% if program.target_rir==3 %}selected{% endif %}>3</option>
-      </select>
-    </div>
-    <div class="col-span-2">
-      <button class="btn-primary" type="submit">Add to Day</button>
-    </div>
+    
+    <button type="submit" class="btn-primary">Add Exercise</button>
   </form>
-</div>
-{% endif %}
-
-<div class="card">
-  <h3>Exercises (drag to reorder)</h3>
-  {% if pes %}
-    <ul id="sortable" class="bullets">
-      {% for pe in pes %}
-        <li class="row gap" data-peid="{{ pe.id }}">
-          <span style="cursor:grab">⠿</span>
-          <span class="grow">{{ pe.exercise.name }} — <strong>{{ pe.target_sets }}</strong> sets @ {{ pe.rep_min }}–{{ pe.rep_max }} (RIR {{ pe.rir }})</span>
-          <form method="post" class="row gap" action="{{ url_for('edit_program_day', program_id=program.id, day_id=day.id) }}">
-            <input type="hidden" name="action" value="update_sets">
-            <input type="hidden" name="pe_id" value="{{ pe.id }}">
-            <input class="w80" name="new_sets" type="number" min="1" value="{{ pe.target_sets }}">
-            <button class="btn" type="submit">Update sets</button>
-          </form>
-          {% if allow_edit_exercises %}
-            <form method="post" action="{{ url_for('delete_program_exercise', pe_id=pe.id) }}">
-              <button class="btn danger" type="submit">Remove</button>
-            </form>
-          {% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-    {% if allow_edit_exercises %}
-      <button id="saveOrder" class="btn" type="button">Save Order</button>
-    {% endif %}
-  {% else %}
-    <p class="muted">None yet — add some above.</p>
   {% endif %}
-  <p><a class="btn" href="{{ url_for('current_program') }}">← Back</a></p>
 </div>
 
-{% if allow_edit_exercises %}
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-<script>
-  const list = document.getElementById('sortable');
-  if (list) {
-    new Sortable(list, { animation: 150, handle: 'span', ghostClass: 'sortable-ghost' });
-    document.getElementById('saveOrder').addEventListener('click', async () => {
-      const order = Array.from(list.querySelectorAll('li')).map(li => li.dataset.peid);
-      const res = await fetch('{{ url_for("sort_program_day", day_id=day.id) }}', {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order })
-      });
-      if (res.ok) { location.reload(); } else { alert('Failed to save order'); }
-    });
-  }
-</script>
-{% endif %}
+<h3>Current Exercises</h3>
+{% for pe in pes %}
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h4 style="margin: 0;">{{ pe.exercise.name }}</h4>
+      <p class="muted" style="margin: 4px 0;">
+        {{ pe.target_sets }} sets × {{ pe.rep_min }}-{{ pe.rep_max }} reps @ {{ pe.rir }} RIR
+      </p>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <!-- Always allow set changes -->
+      <form method="post" style="display: inline-flex; align-items: center; gap: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="update_sets">
+        <input type="hidden" name="pe_id" value="{{ pe.id }}">
+        <input type="number" name="new_sets" value="{{ pe.target_sets }}" min="1" max="20" 
+               style="width: 60px; padding: 6px; margin: 0;">
+        <button type="submit" class="btn" style="padding: 6px 12px; margin: 0;">Update Sets</button>
+      </form>
+      
+      {% if allow_edit_exercises %}
+      <form method="post" action="{{ url_for('delete_program_exercise', pe_id=pe.id) }}" style="display: inline; margin: 0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn danger" style="padding: 6px 12px; margin: 0;">Remove</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<a href="{{ url_for('current_program') }}" class="btn">← Back to Program</a>
 {% endblock %}

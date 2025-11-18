@@ -221,14 +221,51 @@ function updateRecommendations() {
 }
 
 function adjustFrequency(muscle) {
-  const newFreq = prompt(`Enter frequency for ${muscle.toUpperCase()} (1-7 times per week):`, customFrequencies[muscle]);
-  if (newFreq !== null) {
-    const freq = parseInt(newFreq);
-    if (freq >= 1 && freq <= 7) {
-      customFrequencies[muscle] = freq;
-      updateRecommendations();
+  const currentFreq = customFrequencies[muscle];
+  const rir = parseInt(document.getElementById('rir-select').value);
+  const clampedFreq = Math.min(currentFreq, 3);
+  const currentSets = Math.round(volumeByRirFreq[rir][clampedFreq]);
+  
+  const choice = prompt(
+    `${muscle.toUpperCase()}\n\n` +
+    `Current: ${currentFreq}×/week, ${currentSets} sets/session\n\n` +
+    `Enter:\n` +
+    `"f:X" to change frequency (e.g., "f:3" for 3×/week)\n` +
+    `"s:X" to change sets per session (e.g., "s:8" for 8 sets)\n` +
+    `Or enter just a number to change frequency`,
+    `f:${currentFreq}`
+  );
+  
+  if (choice !== null && choice.trim()) {
+    const input = choice.trim().toLowerCase();
+    
+    if (input.startsWith('f:')) {
+      const freq = parseInt(input.substring(2));
+      if (freq >= 1 && freq <= 7) {
+        customFrequencies[muscle] = freq;
+        updateRecommendations();
+      } else {
+        alert('Frequency must be between 1 and 7');
+      }
+    } else if (input.startsWith('s:')) {
+      const sets = parseInt(input.substring(2));
+      if (sets >= 1 && sets <= 20) {
+        // Store custom sets override
+        if (!window.customSets) window.customSets = {};
+        window.customSets[muscle] = sets;
+        updateRecommendations();
+      } else {
+        alert('Sets must be between 1 and 20');
+      }
     } else {
-      alert('Please enter a number between 1 and 7');
+      // Treat as frequency for backwards compatibility
+      const freq = parseInt(input);
+      if (freq >= 1 && freq <= 7) {
+        customFrequencies[muscle] = freq;
+        updateRecommendations();
+      } else {
+        alert('Please enter a valid frequency (1-7)');
+      }
     }
   }
 }

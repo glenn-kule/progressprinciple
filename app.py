@@ -690,6 +690,26 @@ def edit_program_day_post(program_id, day_id):
     allow_edit_exercises = not prog.locked
 
     action = request.form.get("action", "add")
+    
+    # ALWAYS allow set updates, even when locked
+    if action == "update_sets":
+        pe_id = int(request.form.get("pe_id"))
+        new_sets = int(request.form.get("new_sets", "0"))
+        pe = ProgramExercise.query.get_or_404(pe_id)
+        if new_sets < 1:
+            flash("Sets must be >=1.")
+        else:
+            try:
+                pe.target_sets = new_sets
+                db.session.commit()
+                flash("Sets updated for the rest of your program.")
+            except Exception as e:
+                db.session.rollback()
+                flash("Error updating sets.")
+                print(f"Update sets error: {e}")
+        return redirect(url_for("edit_program_day", program_id=program_id, day_id=day_id))
+    
+    # Only allow adding exercises when not locked
     if action == "add" and allow_edit_exercises:
         ex_id = int(request.form.get("exercise_id","0"))
         target_sets = int(request.form.get("target_sets","3"))
@@ -697,7 +717,6 @@ def edit_program_day_post(program_id, day_id):
         rep_max = int(request.form.get("rep_max","10"))
         rir = int(request.form.get("rir", str(prog.target_rir)))
         
-        # Validate RIR is between 0-4
         if rir < 0 or rir > 4:
             rir = prog.target_rir
         
@@ -716,21 +735,6 @@ def edit_program_day_post(program_id, day_id):
                 print(f"Add program exercise error: {e}")
         else:
             flash("Provide valid sets/rep range.")
-    elif action == "update_sets":
-        pe_id = int(request.form.get("pe_id"))
-        new_sets = int(request.form.get("new_sets", "0"))
-        pe = ProgramExercise.query.get_or_404(pe_id)
-        if new_sets < 1:
-            flash("Sets must be >=1.")
-        else:
-            try:
-                pe.target_sets = new_sets
-                db.session.commit()
-                flash("Sets updated.")
-            except Exception as e:
-                db.session.rollback()
-                flash("Error updating sets.")
-                print(f"Update sets error: {e}")
 
     return redirect(url_for("edit_program_day", program_id=program_id, day_id=day_id))
 
