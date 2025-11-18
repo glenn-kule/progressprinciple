@@ -1,28 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>Welcome to ProgressPrinciple</h2>
-  <p>Your minimalist hypertrophy tracker with smart progressive overload.</p>
-  {% if not current_user.is_authenticated %}
-    <div class="row gap" style="margin-top:12px;">
-      <a class="btn-primary" href="{{ url_for('signup') }}">Create account</a>
-      <a class="btn" href="{{ url_for('login') }}">Log in</a>
+<div style="text-align: center; max-width: 600px; margin: 60px auto;">
+  <h1 style="font-size: 3rem; margin-bottom: 20px;">⚡ Hypertrophy</h1>
+  <p style="font-size: 1.3rem; color: var(--text-secondary); margin-bottom: 40px;">
+    Science-based hypertrophy training tracker. Track progressive overload, optimize volume, and build muscle intelligently.
+  </p>
+  
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 40px 0;">
+    <div class="card">
+      <h3>📊 Smart Recommendations</h3>
+      <p class="muted">Volume guidance based on RIR and frequency</p>
     </div>
-  {% else %}
-    <div class="row gap" style="margin-top:12px;">
-      <a class="btn-primary" href="{{ url_for('current_program') }}">Go to my program</a>
-      <a class="btn" href="{{ url_for('logout') }}">Logout</a>
+    <div class="card">
+      <h3>📈 Progressive Overload</h3>
+      <p class="muted">Automatic weight and rep progression tracking</p>
     </div>
-  {% endif %}
-</div>
-
-<div class="card">
-  <h3>What you can do</h3>
-  <ul>
-    <li>Create a program (pick days, exercises, rep ranges, RIR)</li>
-    <li>Log sessions with target reps & progressive overload suggestions</li>
-    <li>Schedule an optional deload week</li>
-    <li>Manage your exercise and muscle banks (add/edit/remove)</li>
-  </ul>
+    <div class="card">
+      <h3>🎯 Flexible Programs</h3>
+      <p class="muted">PPL, UL, FB, or create custom splits</p>
+    </div>
+  </div>
+  
+  <div style="margin-top: 40px; display: flex; gap: 15px; justify-content: center;">
+    <a href="{{ url_for('signup') }}" class="btn-primary" style="font-size: 1.1rem; padding: 14px 30px;">Get Started →</a>
+    <a href="{{ url_for('login') }}" class="btn" style="font-size: 1.1rem; padding: 14px 30px;">Login</a>
+  </div>
 </div>
 {% endblock %}
