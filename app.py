@@ -257,6 +257,25 @@ def get_muscle_names():
 def days_for_split(split: str, days_per_week: int):
     return SPLITS.get(split, SPLITS["FB"])[:days_per_week]
 
+def parse_custom_split_days(custom_days_str: str, days_per_week: int):
+    """Parse custom day names from user input"""
+    if not custom_days_str or not custom_days_str.strip():
+        # Default to generic day names
+        return [f"Day {i+1}" for i in range(days_per_week)]
+    
+    day_names = [d.strip() for d in custom_days_str.split(',') if d.strip()]
+    
+    # Ensure we have the right number of days
+    if len(day_names) < days_per_week:
+        # Pad with generic names
+        while len(day_names) < days_per_week:
+            day_names.append(f"Day {len(day_names) + 1}")
+    elif len(day_names) > days_per_week:
+        # Truncate
+        day_names = day_names[:days_per_week]
+    
+    return day_names
+
 def seed_muscles():
     defaults = ["chest","back","legs","shoulders","biceps","triceps","calves","forearms"]
     existing = {m.name for m in MuscleGroup.query.all()}
@@ -608,10 +627,17 @@ def create_program():
     if request.method == "POST":
         name = (request.form.get("name") or "My Program").strip() or "My Program"
         split = request.form.get("split","PPL")
-        days_per_week = int(request.form.get("days_per_week","4"))
+        days_per_week = int(request.form.get("days_per_week","6"))
         target_rir = int(request.form.get("target_rir","2"))
         duration_weeks = int(request.form.get("duration_weeks","8"))
         deload = request.form.get("deload") == "on"
+        
+        # Handle custom split
+        if split == "CUSTOM":
+            custom_days_str = request.form.get("custom_days", "")
+            day_names = parse_custom_split_days(custom_days_str, days_per_week)
+        else:
+            day_names = days_for_split(split, days_per_week)
 
         try:
             archive_any_active_before_creating(current_user.id)
@@ -624,7 +650,7 @@ def create_program():
             db.session.add(prog)
             db.session.flush()
 
-            for idx, nm in enumerate(days_for_split(split, days_per_week)):
+            for idx, nm in enumerate(day_names):
                 db.session.add(ProgramDay(program_id=prog.id, day_index=idx, day_name=nm))
             db.session.commit()
 

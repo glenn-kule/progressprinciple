@@ -12,17 +12,25 @@
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
       <div>
         <label>Split Type</label>
-        <select name="split" id="split-select" required onchange="updateRecommendations()">
+        <select name="split" id="split-select" required onchange="handleSplitChange()">
           <option value="PPL">Push/Pull/Legs</option>
           <option value="UL">Upper/Lower</option>
           <option value="FB">Full Body</option>
+          <option value="CUSTOM">Custom Split</option>
         </select>
       </div>
       
       <div>
         <label>Days Per Week</label>
-        <input name="days_per_week" id="days-input" type="number" min="3" max="6" value="6" required onchange="updateRecommendations()">
+        <input name="days_per_week" id="days-input" type="number" min="3" max="7" value="6" required onchange="updateRecommendations()">
       </div>
+    </div>
+    
+    <!-- Custom Day Names (only shown for custom split) -->
+    <div id="custom-days-section" style="display: none; margin-top: 15px;">
+      <label>Day Names (comma-separated)</label>
+      <input name="custom_days" id="custom-days-input" placeholder="Push A, Pull A, Legs, Push B, Pull B, Rest" onchange="updateCustomDays()">
+      <p class="muted" style="font-size: 13px; margin-top: 5px;">Example: "Push A, Pull A, Legs, Push B, Pull B" for a 5-day split</p>
     </div>
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -46,7 +54,7 @@
     <!-- Volume Recommendations Panel -->
     <div id="volume-recommendations" class="card" style="background: #1e293b; margin-top: 20px; padding: 15px;">
       <h3 style="margin-top: 0; color: #60a5fa;">📊 Volume Recommendations</h3>
-      <p class="muted" style="font-size: 14px;">Based on your selected split and RIR target:</p>
+      <p class="muted" style="font-size: 14px;">Science-based recommendations for your split and RIR:</p>
       <div id="recommendations-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px;">
         <!-- Populated by JavaScript -->
       </div>
@@ -62,18 +70,88 @@
 <script>
 // Correct volume recommendations based on RIR and frequency
 const volumeByRirFreq = {
-  0: { 1: 9, 2: 5, 3: 3.5 },   // RIR 0: averages of ranges
-  1: { 1: 11, 2: 6, 3: 4.5 },  // RIR 1
-  2: { 1: 13, 2: 7, 3: 5 },    // RIR 2
-  3: { 1: 14, 2: 7.5, 3: 5.5 },  // RIR 3 (extrapolated)
-  4: { 1: 15, 2: 8, 3: 6 }     // RIR 4 (extrapolated)
+  0: { 1: 9, 2: 5, 3: 3.5 },
+  1: { 1: 11, 2: 6, 3: 4.5 },
+  2: { 1: 13, 2: 7, 3: 5 },
+  3: { 1: 14, 2: 7.5, 3: 5.5 },
+  4: { 1: 15, 2: 8, 3: 6 }
 };
 
 const splitFrequency = {
   PPL: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 },
   UL: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 },
-  FB: { chest: 3, back: 3, legs: 3, shoulders: 3, biceps: 3, triceps: 3 }
+  FB: { chest: 3, back: 3, legs: 3, shoulders: 3, biceps: 3, triceps: 3 },
+  CUSTOM: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 } // Default, user can customize
 };
+
+// Store custom frequencies
+let customFrequencies = {...splitFrequency.CUSTOM};
+
+function handleSplitChange() {
+  const split = document.getElementById('split-select').value;
+  const customSection = document.getElementById('custom-days-section');
+  
+  if (split === 'CUSTOM') {
+    customSection.style.display = 'block';
+    updateCustomDays();
+  } else {
+    customSection.style.display = 'none';
+  }
+  
+  updateRecommendations();
+}
+
+function updateCustomDays() {
+  const customDaysInput = document.getElementById('custom-days-input').value;
+  const days = parseInt(document.getElementById('days-input').value);
+  
+  if (!customDaysInput.trim()) {
+    // If no custom days specified, use default frequencies
+    customFrequencies = { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 };
+    updateRecommendations();
+    return;
+  }
+  
+  // Parse custom day names to infer frequencies
+  const dayNames = customDaysInput.split(',').map(d => d.trim().toLowerCase());
+  const muscles = ['chest', 'back', 'legs', 'shoulders', 'biceps', 'triceps'];
+  
+  // Reset frequencies
+  muscles.forEach(m => customFrequencies[m] = 0);
+  
+  // Count mentions of muscle groups in day names
+  dayNames.forEach(dayName => {
+    if (dayName.includes('push')) {
+      customFrequencies.chest++;
+      customFrequencies.shoulders++;
+      customFrequencies.triceps++;
+    }
+    if (dayName.includes('pull')) {
+      customFrequencies.back++;
+      customFrequencies.biceps++;
+    }
+    if (dayName.includes('leg')) {
+      customFrequencies.legs++;
+    }
+    if (dayName.includes('upper')) {
+      customFrequencies.chest++;
+      customFrequencies.back++;
+      customFrequencies.shoulders++;
+      customFrequencies.biceps++;
+      customFrequencies.triceps++;
+    }
+    if (dayName.includes('full') || dayName.includes('body')) {
+      muscles.forEach(m => customFrequencies[m]++);
+    }
+  });
+  
+  // If no frequencies detected, default to 2x
+  muscles.forEach(m => {
+    if (customFrequencies[m] === 0) customFrequencies[m] = 2;
+  });
+  
+  updateRecommendations();
+}
 
 function updateRecommendations() {
   const split = document.getElementById('split-select').value;
@@ -83,50 +161,79 @@ function updateRecommendations() {
   const container = document.getElementById('recommendations-content');
   container.innerHTML = '';
   
-  // Calculate frequency based on split type
-  let freqMap = {...splitFrequency[split]};
-  
-  // Adjust frequency based on days per week
-  if (split === 'PPL') {
-    const cycles = Math.floor(days / 3);
-    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(cycles, 3));
-  } else if (split === 'UL') {
-    const cycles = Math.floor(days / 2);
-    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(cycles, 3));
-  } else if (split === 'FB') {
-    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(days, 3));
+  // Get frequency map based on split type
+  let freqMap;
+  if (split === 'CUSTOM') {
+    freqMap = {...customFrequencies};
+  } else {
+    freqMap = {...splitFrequency[split]};
+    
+    // Adjust frequency based on days per week for preset splits
+    if (split === 'PPL') {
+      const cycles = Math.floor(days / 3);
+      Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(cycles, 3));
+    } else if (split === 'UL') {
+      const cycles = Math.floor(days / 2);
+      Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(cycles, 3));
+    } else if (split === 'FB') {
+      Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(days, 3));
+    }
   }
   
-  // Get muscles to display
   const muscles = ['chest', 'back', 'legs', 'shoulders', 'biceps', 'triceps'];
   
   muscles.forEach(muscle => {
     const freq = freqMap[muscle] || 2;
-    const clampedFreq = Math.min(freq, 3); // Max 3x for lookup
+    const clampedFreq = Math.min(freq, 3);
     
-    // Get sets per session from lookup table
     const setsPerSession = Math.round(volumeByRirFreq[rir][clampedFreq]);
     const weeklyTotal = setsPerSession * freq;
     
     const card = document.createElement('div');
-    card.style.cssText = 'background: #0f172a; padding: 14px; border-radius: 10px; border: 1px solid #334155;';
+    card.style.cssText = 'background: #0f172a; padding: 14px; border-radius: 10px; border: 1px solid #334155; cursor: pointer; transition: all 0.2s;';
+    
+    // Make cards interactive for custom split
+    if (split === 'CUSTOM') {
+      card.style.border = '2px solid #3b82f6';
+      card.onclick = () => adjustFrequency(muscle);
+    }
+    
     card.innerHTML = `
-      <div style="font-weight: 700; color: #60a5fa; margin-bottom: 8px; font-size: 15px;">${muscle.toUpperCase()}</div>
+      <div style="font-weight: 700; color: #60a5fa; margin-bottom: 8px; font-size: 15px;">
+        ${muscle.toUpperCase()}
+        ${split === 'CUSTOM' ? '<span style="float: right; font-size: 12px; color: #94a3b8;">✏️</span>' : ''}
+      </div>
       <div style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
         <div style="color: #94a3b8;">Frequency: <strong style="color: #e2e8f0;">${freq}×/week</strong></div>
         <div style="color: #22c55e; font-weight: 700; font-size: 18px; margin: 6px 0;">${setsPerSession} sets/session</div>
-        <div style="color: #94a3b8;">Weekly Total: <strong style="color: #e2e8f0;">${weeklyTotal} sets</strong></div>
+        <div style="color: #94a3b8;">Weekly: <strong style="color: #e2e8f0;">${weeklyTotal} sets</strong></div>
       </div>
     `;
     container.appendChild(card);
   });
+  
+  if (split === 'CUSTOM') {
+    const hint = document.createElement('p');
+    hint.style.cssText = 'font-size: 12px; color: #64748b; margin-top: 12px; font-style: italic;';
+    hint.textContent = '💡 Click on muscle cards to adjust frequency';
+    container.appendChild(hint);
+  }
+}
+
+function adjustFrequency(muscle) {
+  const newFreq = prompt(`Enter frequency for ${muscle.toUpperCase()} (1-7 times per week):`, customFrequencies[muscle]);
+  if (newFreq !== null) {
+    const freq = parseInt(newFreq);
+    if (freq >= 1 && freq <= 7) {
+      customFrequencies[muscle] = freq;
+      updateRecommendations();
+    } else {
+      alert('Please enter a number between 1 and 7');
+    }
+  }
 }
 
 // Update on page load
 document.addEventListener('DOMContentLoaded', updateRecommendations);
 </script>
-
-<style>
-.card h3 { color: #60a5fa; }
-</style>
 {% endblock %}
