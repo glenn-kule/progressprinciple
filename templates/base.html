@@ -1,4 +1,3 @@
-<!-- templates/base.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,108 +5,201 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="theme-color" content="#111111" />
+  <meta name="theme-color" content="#0f172a" />
   <title>Hypertrophy</title>
   
-  <!-- PWA Icons -->
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32x32.png') }}">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <style>
-    * { box-sizing: border-box; }
-    html, body { width: 100%; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
-    body { 
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; 
-      margin: 0 auto; 
-      max-width: 900px; 
-      padding: 16px; 
-      color: #e6e6e6; 
-      background:#111; 
-    }
-    a { color:#5eb6ff; text-decoration:none; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
-    .gap { gap:10px; }
-    .btn { 
-      padding:8px 12px; 
-      border:1px solid #444; 
-      border-radius:6px; 
-      color:#ddd; 
-      background:#1b1b1b;
-      white-space: nowrap;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    .btn:hover { background:#232323; }
-    .btn-primary { 
-      padding:8px 12px; 
-      border-radius:6px; 
-      color:#fff; 
-      background:#2563eb; 
-      border:1px solid #1e40af;
-      cursor: pointer;
-    }
-    .btn-primary:hover { background:#1f4fd1; }
-    .danger { background:#7f1d1d; border-color:#991b1b; }
-    .card { 
-      background:#181818; 
-      border:1px solid #2a2a2a; 
-      border-radius:10px; 
-      padding:14px; 
-      margin:12px 0;
-      width: 100%;
-      overflow-x: auto;
-    }
-    label { display:block; font-size:14px; margin-bottom:6px; color:#aaa; }
-    input, select, textarea { 
-      width:100%; 
-      padding:10px; 
-      border-radius:8px; 
-      border:1px solid #3a3a3a; 
-      background:#101010; 
-      color:#e6e6e6;
-      font-size: 16px; /* Prevents iOS zoom */
-      -webkit-appearance: none;
-    }
-    button {
-      padding:10px;
-      border-radius:8px;
-      border:1px solid #3a3a3a;
-      background:#1b1b1b;
-      color:#e6e6e6;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    h1,h2,h3 { margin:12px 0; }
-    h1 { font-size: 1.5rem; }
-    h2 { font-size: 1.3rem; }
-    .muted { color:#9aa0a6; }
-    .flash { padding:12px; border-radius:8px; margin:12px 0; border:1px solid #2a2a2a; }
-    .flash.info { background:#0b2a3a; border-color:#174e6b; }
-    .flash.success { background:#0e2f1b; border-color:#1b5e33; }
-    .flash.error { background:#3a0b0b; border-color:#6b1717; }
-    .flash.warning { background:#3a2b0b; border-color:#6b5517; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     
-    /* Header styling */
-    header { 
-      justify-content:space-between; 
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #2a2a2a;
+    html, body { 
+      width: 100%; 
+      overflow-x: hidden; 
+      -webkit-text-size-adjust: 100%; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.6;
     }
     
-    nav { 
-      display: flex; 
-      gap: 6px; 
+    /* RP Color Palette */
+    :root {
+      --primary: #3b82f6;
+      --primary-dark: #2563eb;
+      --accent: #06b6d4;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #1e293b;
+      --border: #334155;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+    }
+    
+    /* Header */
+    header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+    
+    nav {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
       flex-wrap: wrap;
     }
     
-    /* Table responsiveness */
+    nav h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    
+    /* Main Content */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 16px;
+      min-height: calc(100vh - 80px);
+    }
+    
+    /* Typography */
+    h1, h2, h3, h4 {
+      color: var(--text-primary);
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.25rem; }
+    h4 { font-size: 1.1rem; }
+    
+    /* Buttons - RP Style */
+    .btn, .btn-primary, .btn-secondary, button[type="submit"] {
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      text-align: center;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+    
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+    
+    .btn {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+    
+    .btn:hover {
+      background: #334155;
+      border-color: #475569;
+    }
+    
+    .danger {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
+    
+    .danger:hover {
+      background: #dc2626;
+    }
+    
+    /* Cards - RP Style */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      width: 100%;
+    }
+    
+    .card:hover {
+      border-color: #475569;
+    }
+    
+    /* Forms */
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 16px;
+      margin-bottom: 16px;
+      transition: all 0.2s;
+    }
+    
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    /* Tables - RP Style */
     .table-container {
       width: 100%;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
+      border-radius: 8px;
     }
     
     table {
@@ -116,99 +208,213 @@
       min-width: 500px;
     }
     
-    table th, table td {
-      padding: 8px;
-      text-align: left;
-      border-bottom: 1px solid #2a2a2a;
+    thead {
+      background: var(--bg-primary);
     }
     
-    /* Grid system for forms */
-    .grid2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    th {
+      padding: 12px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid var(--border);
+    }
+    
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+    
+    tr:last-child td {
+      border-bottom: none;
+    }
+    
+    tbody tr:hover {
+      background: rgba(59, 130, 246, 0.05);
+    }
+    
+    /* Flash Messages - RP Style */
+    .flash {
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+      border-left: 4px solid;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .flash.success {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: var(--success);
+      color: #6ee7b7;
+    }
+    
+    .flash.error {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--danger);
+      color: #fca5a5;
+    }
+    
+    .flash.warning {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: var(--warning);
+      color: #fcd34d;
+    }
+    
+    .flash.info {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--primary);
+      color: #93c5fd;
+    }
+    
+    /* Utilities */
+    .muted {
+      color: var(--text-muted);
+    }
+    
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .gap {
       gap: 12px;
     }
     
-    .col-span-2 {
-      grid-column: span 2;
+    /* Progress Indicators */
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 8px 0;
     }
     
-    /* Mobile adjustments */
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      transition: width 0.3s;
+    }
+    
+    /* Stats Cards */
+    .stat-card {
+      text-align: center;
+      padding: 16px;
+      background: var(--bg-primary);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Mobile Optimizations */
     @media (max-width: 768px) {
-      body { padding: 12px; }
-      
-      h1 { font-size: 1.3rem; }
-      h2 { font-size: 1.1rem; }
-      
-      .btn, .btn-primary { 
-        font-size: 13px; 
-        padding: 6px 10px;
+      nav h1 {
+        font-size: 1.2rem;
       }
       
-      header { flex-direction: column; align-items: flex-start; }
-      
-      nav { width: 100%; justify-content: flex-start; }
-      
-      .card { padding: 12px; }
-      
-      /* Stack grid on mobile */
-      .grid2 {
-        grid-template-columns: 1fr;
+      .nav-links a, .nav-links button {
+        font-size: 13px;
+        padding: 8px 12px;
       }
       
-      .col-span-2 {
-        grid-column: span 1;
+      main {
+        padding: 16px 12px;
+      }
+      
+      .card {
+        padding: 16px;
+      }
+      
+      h1 { font-size: 1.75rem; }
+      h2 { font-size: 1.35rem; }
+      
+      .btn, .btn-primary {
+        width: 100%;
+        padding: 12px;
+      }
+      
+      table {
+        font-size: 14px;
+      }
+      
+      th, td {
+        padding: 8px;
       }
     }
     
-    /* Very small screens */
     @media (max-width: 480px) {
-      body { font-size: 15px; padding: 8px; }
-      
-      h1 { font-size: 1.2rem; }
-      
-      .btn, .btn-primary { 
-        font-size: 12px; 
-        padding: 6px 8px;
+      nav {
+        flex-direction: column;
+        align-items: stretch;
       }
       
-      input, select, textarea, button {
-        font-size: 16px; /* Prevent zoom on focus */
+      .nav-links {
+        width: 100%;
+        justify-content: space-between;
+      }
+      
+      .nav-links a, .nav-links button {
+        flex: 1;
+        font-size: 12px;
+        padding: 8px 6px;
       }
     }
   </style>
 </head>
 <body>
-
-  <header class="row">
-    <h1>Hypertrophy</h1>
+  <header>
     <nav>
-      {% if current_user.is_authenticated %}
-        <a class="btn" href="{{ url_for('current_program') }}">Current</a>
-        <a class="btn" href="{{ url_for('workout_history') }}">History</a>
-        <a class="btn" href="{{ url_for('programs_history') }}">Programs</a>
-        <a class="btn" href="{{ url_for('exercises_bank') }}">Exercises</a>
-        <a class="btn" href="{{ url_for('muscles') }}">Muscles</a>
-        <form method="post" action="{{ url_for('logout') }}" style="display: inline; margin: 0;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn" style="padding: 6px 10px; margin: 0; width: auto; font-size: 13px;">Logout</button>
-        </form>
-      {% else %}
-        <a class="btn" href="{{ url_for('login') }}">Login</a>
-        <a class="btn" href="{{ url_for('signup') }}">Sign up</a>
-      {% endif %}
+      <h1>⚡ Hypertrophy</h1>
+      <div class="nav-links">
+        {% if current_user.is_authenticated %}
+          <a class="btn" href="{{ url_for('current_program') }}">Program</a>
+          <a class="btn" href="{{ url_for('workout_history') }}">History</a>
+          <a class="btn" href="{{ url_for('analytics_dashboard') }}">Stats</a>
+          <a class="btn" href="{{ url_for('exercises_bank') }}">Exercises</a>
+          <form method="post" action="{{ url_for('logout') }}" style="display: inline; margin: 0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn" style="margin: 0;">Logout</button>
+          </form>
+        {% else %}
+          <a class="btn-primary" href="{{ url_for('login') }}">Login</a>
+          <a class="btn" href="{{ url_for('signup') }}">Sign up</a>
+        {% endif %}
+      </div>
     </nav>
   </header>
 
-  <!-- Flash messages (shows dev verification/reset links) -->
-  {% with msgs = get_flashed_messages(with_categories=True) %}
-    {% if msgs %}
-      {% for cat, msg in msgs %}
-        <div class="flash {{cat}}">{{ msg|safe }}</div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
+  <main>
+    {% with msgs = get_flashed_messages(with_categories=True) %}
+      {% if msgs %}
+        {% for cat, msg in msgs %}
+          <div class="flash {{cat}}">{{ msg|safe }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
-  {% block content %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>

@@ -1,38 +1,131 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Create Training Program</h2>
+<h2>Create Program</h2>
 
 <div class="card">
-  <form method="post">
+  <form method="post" id="program-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     
     <label>Program Name</label>
-    <input name="name" required placeholder="My Program" value="My Program">
+    <input name="name" required placeholder="My Hypertrophy Program" value="My Hypertrophy Program">
     
-    <label>Split Type</label>
-    <select name="split" required>
-      <option value="PPL">Push/Pull/Legs (6 days)</option>
-      <option value="UL">Upper/Lower (4 days)</option>
-      <option value="FB">Full Body (3-6 days)</option>
-    </select>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+      <div>
+        <label>Split Type</label>
+        <select name="split" id="split-select" required onchange="updateRecommendations()">
+          <option value="PPL">Push/Pull/Legs</option>
+          <option value="UL">Upper/Lower</option>
+          <option value="FB">Full Body</option>
+        </select>
+      </div>
+      
+      <div>
+        <label>Days Per Week</label>
+        <input name="days_per_week" id="days-input" type="number" min="3" max="6" value="6" required onchange="updateRecommendations()">
+      </div>
+    </div>
     
-    <label>Days Per Week</label>
-    <input name="days_per_week" type="number" min="3" max="6" value="4" required>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+      <div>
+        <label>Duration (weeks)</label>
+        <input name="duration_weeks" type="number" min="4" max="16" value="8" required>
+      </div>
+      
+      <div>
+        <label>Target RIR (Reps in Reserve)</label>
+        <select name="target_rir" id="rir-select" required onchange="updateRecommendations()">
+          <option value="0">0 RIR (Failure)</option>
+          <option value="1">1 RIR (Very Hard)</option>
+          <option value="2" selected>2 RIR (Hard)</option>
+          <option value="3">3 RIR (Moderate)</option>
+          <option value="4">4 RIR (Controlled)</option>
+        </select>
+      </div>
+    </div>
     
-    <label>Program Duration (weeks)</label>
-    <input name="duration_weeks" type="number" min="4" max="16" value="8" required>
-    
-    <label>Target RIR</label>
-    <select name="target_rir" required>
-      <option value="1">1 RIR (very hard)</option>
-      <option value="2" selected>2 RIR (hard)</option>
-      <option value="3">3 RIR (moderate)</option>
-    </select>
+    <!-- Volume Recommendations Panel -->
+    <div id="volume-recommendations" class="card" style="background: #1e293b; margin-top: 20px; padding: 15px;">
+      <h3 style="margin-top: 0; color: #60a5fa;">📊 Volume Recommendations</h3>
+      <p class="muted" style="font-size: 14px;">Based on your selected split and RIR target:</p>
+      <div id="recommendations-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px;">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
     
     <div style="margin-top: 20px; display: flex; gap: 10px;">
-      <button type="submit" class="btn-primary">Create Program</button>
+      <button type="submit" class="btn-primary">Create Program →</button>
       <a href="{{ url_for('current_program') }}" class="btn">Cancel</a>
     </div>
   </form>
 </div>
+
+<script>
+// Volume recommendation logic
+const volumeData = {
+  chest: { mev: 12, mrv: 22 },
+  back: { mev: 14, mrv: 25 },
+  legs: { mev: 10, mrv: 20 },
+  shoulders: { mev: 12, mrv: 20 },
+  biceps: { mev: 14, mrv: 26 },
+  triceps: { mev: 14, mrv: 28 }
+};
+
+const splitFrequency = {
+  PPL: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 },
+  UL: { chest: 2, back: 2, legs: 2, shoulders: 2, biceps: 2, triceps: 2 },
+  FB: { chest: 1, back: 1, legs: 1, shoulders: 1, biceps: 1, triceps: 1 }
+};
+
+function updateRecommendations() {
+  const split = document.getElementById('split-select').value;
+  const days = parseInt(document.getElementById('days-input').value);
+  const rir = parseInt(document.getElementById('rir-select').value);
+  
+  // RIR adjustment multiplier
+  const rirMult = {0: 0.85, 1: 0.90, 2: 1.0, 3: 1.05, 4: 1.10}[rir] || 1.0;
+  
+  const container = document.getElementById('recommendations-content');
+  container.innerHTML = '';
+  
+  // Calculate frequency based on split and days
+  let freqMap = {...splitFrequency[split]};
+  if (split === 'FB') {
+    Object.keys(freqMap).forEach(k => freqMap[k] = Math.min(days, 6));
+  } else if (split === 'PPL') {
+    const sessions = Math.floor(days / 3);
+    Object.keys(freqMap).forEach(k => freqMap[k] = sessions);
+  } else if (split === 'UL') {
+    const sessions = Math.floor(days / 2);
+    Object.keys(freqMap).forEach(k => freqMap[k] = sessions);
+  }
+  
+  Object.keys(volumeData).forEach(muscle => {
+    const data = volumeData[muscle];
+    const freq = freqMap[muscle] || 2;
+    const adjustedMRV = Math.round(data.mrv * rirMult);
+    const optimal = Math.round(data.mev + (adjustedMRV - data.mev) * 0.7);
+    const perSession = Math.max(3, Math.round(optimal / freq));
+    
+    const card = document.createElement('div');
+    card.style.cssText = 'background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155;';
+    card.innerHTML = `
+      <div style="font-weight: 600; color: #60a5fa; margin-bottom: 6px;">${muscle.toUpperCase()}</div>
+      <div style="font-size: 13px; color: #94a3b8;">
+        <div>Frequency: ${freq}x/week</div>
+        <div style="color: #22c55e; font-weight: 600; margin-top: 4px;">${perSession} sets/session</div>
+        <div style="margin-top: 4px;">Weekly: ${optimal} sets</div>
+        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">MEV: ${data.mev} | MRV: ${adjustedMRV}</div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// Update on page load
+document.addEventListener('DOMContentLoaded', updateRecommendations);
+</script>
+
+<style>
+.card h3 { color: #60a5fa; }
+</style>
 {% endblock %}

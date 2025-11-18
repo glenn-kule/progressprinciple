@@ -183,6 +183,66 @@ INCREMENT_LBS = {
     "biceps": 2.5, "triceps": 2.5, "calves": 5.0, "forearms": 2.5
 }
 
+# Smart volume recommendations based on RP guidelines
+def get_volume_recommendations(muscle_group: str, frequency: int, target_rir: int) -> dict:
+    """
+    Returns recommended weekly sets based on muscle, frequency, and RIR.
+    Based on Renaissance Periodization volume landmarks.
+    """
+    # Base MRV (Maximum Recoverable Volume) per muscle per week
+    base_mrv = {
+        "chest": 22, "back": 25, "legs": 20, "shoulders": 20,
+        "biceps": 26, "triceps": 28, "calves": 25, "forearms": 20
+    }
+    
+    # Base MEV (Minimum Effective Volume)
+    base_mev = {
+        "chest": 12, "back": 14, "legs": 10, "shoulders": 12,
+        "biceps": 14, "triceps": 14, "calves": 12, "forearms": 10
+    }
+    
+    mrv = base_mrv.get(muscle_group, 20)
+    mev = base_mev.get(muscle_group, 12)
+    
+    # Adjust for RIR (closer to failure = more fatigue = lower volume tolerance)
+    rir_multiplier = {0: 0.85, 1: 0.90, 2: 1.0, 3: 1.05, 4: 1.10}
+    mrv *= rir_multiplier.get(target_rir, 1.0)
+    
+    # Optimal volume is typically 60-75% between MEV and MRV
+    optimal_weekly = int(mev + (mrv - mev) * 0.7)
+    
+    # Sets per session based on frequency
+    sets_per_session = max(3, optimal_weekly // frequency)
+    
+    return {
+        "mev": int(mev),
+        "mrv": int(mrv),
+        "optimal_weekly": optimal_weekly,
+        "sets_per_session": sets_per_session,
+        "frequency": frequency
+    }
+
+
+def analyze_program_volume(program_id: int) -> dict:
+    """Analyze volume distribution across muscle groups in a program"""
+    days = ProgramDay.query.filter_by(program_id=program_id).all()
+    
+    # Count frequency per muscle group
+    muscle_frequency = {}
+    muscle_sets = {}
+    
+    for day in days:
+        exercises = ProgramExercise.query.filter_by(day_id=day.id).all()
+        for pe in exercises:
+            muscle = pe.exercise.muscle_group
+            muscle_frequency[muscle] = muscle_frequency.get(muscle, 0) + 1
+            muscle_sets[muscle] = muscle_sets.get(muscle, 0) + pe.target_sets
+    
+    return {
+        "frequency": muscle_frequency,
+        "weekly_sets": muscle_sets
+    }
+
 @login_manager.user_loader
 def load_user(user_id: str):
     try:
@@ -610,6 +670,11 @@ def edit_program_day_post(program_id, day_id):
         rep_min = int(request.form.get("rep_min","8"))
         rep_max = int(request.form.get("rep_max","10"))
         rir = int(request.form.get("rir", str(prog.target_rir)))
+        
+        # Validate RIR is between 0-4
+        if rir < 0 or rir > 4:
+            rir = prog.target_rir
+        
         if ex_id and rep_min > 0 and rep_max >= rep_min and target_sets > 0:
             try:
                 max_pos = db.session.query(db.func.coalesce(db.func.max(ProgramExercise.position), -1)).filter_by(day_id=day.id).scalar() or -1
